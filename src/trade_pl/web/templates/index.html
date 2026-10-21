@@ -1,38 +1,45 @@
 {% extends "base.html" %}
 {% block title %}Leaderboard · trade_pl{% endblock %}
 {% block content %}
-  {% if not rows %}
+  {% if not rows and not pick %}
     <div class="panel empty">
       <h2>No report yet</h2>
       <p class="muted">Run the pipeline first:</p>
-      <pre style="text-align:left;display:inline-block;background:#0003;padding:1rem;border-radius:8px">python -m trade_pl.run --universe-size 40</pre>
+      <pre style="text-align:left;display:inline-block;background:#0003;padding:1rem;border-radius:8px">python -m trade_pl.run --universe-size 80</pre>
     </div>
   {% else %}
     <section class="hero-pick">
       <div class="panel">
         <div class="badge">model suggested candidate</div>
         <div class="pick-symbol">{{ pick.ticker if pick else "—" }}</div>
-        <p class="muted small">{{ pick.disclaimer if pick else "" }}</p>
-        {% if pick %}
+        <p class="muted small">{{ pick.sector if pick and pick.sector else "" }} · {{ pick.disclaimer if pick else "" }}</p>
+        {% if pick and pick.metric_breakdown %}
         <div class="metrics">
           <div class="metric"><div class="label">Score</div><div class="value">{{ '%.3f'|format(pick.score) }}</div></div>
-          <div class="metric"><div class="label">3M return</div><div class="value {% if pick.metric_breakdown.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(pick.metric_breakdown.return_3m * 100) }}%</div></div>
-          <div class="metric"><div class="label">Sharpe 60d</div><div class="value">{{ '%.2f'|format(pick.metric_breakdown.sharpe_60d) }}</div></div>
-          <div class="metric"><div class="label">Max DD</div><div class="value neg">{{ '%.1f'|format(pick.metric_breakdown.max_drawdown * 100) }}%</div></div>
-          <div class="metric"><div class="label">Price</div><div class="value">${{ '%.2f'|format(pick.metric_breakdown.last_price) }}</div></div>
+          <div class="metric"><div class="label">1W</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_1w * 100) }}%</div></div>
+          <div class="metric"><div class="label">1M</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_1m * 100) }}%</div></div>
+          <div class="metric"><div class="label">3M</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_3m * 100) }}%</div></div>
+          <div class="metric"><div class="label">6M</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_6m * 100) }}%</div></div>
+          <div class="metric"><div class="label">1Y</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_1y * 100) }}%</div></div>
         </div>
         <p style="margin-top:1rem"><a class="btn" href="/stock/{{ pick.ticker }}">Open detail →</a></p>
         {% endif %}
       </div>
       <div class="panel">
         <h2>Latest run</h2>
-        <p class="muted small">As of {{ as_of }} · {{ rows|length }} names scored · metrics {{ metrics_version }}</p>
+        <p class="muted small">As of {{ as_of }} · {{ scored_n }} scored · {{ enriched_n }} enriched · {{ metrics_version }}</p>
         <div class="metrics">
-          <div class="metric"><div class="label">Universe plotted</div><div class="value">{{ plotted_n }}</div></div>
+          <div class="metric"><div class="label">Plots</div><div class="value">{{ plotted_n }}</div></div>
+          <div class="metric"><div class="label">Sectors</div><div class="value">{{ sector_names|length }}</div></div>
           <div class="metric"><div class="label">Report</div><div class="value" style="font-size:0.85rem">{{ report_label }}</div></div>
         </div>
         <form class="toolbar" method="get" action="/" style="margin-top:1rem">
-          <label class="muted small">Sort</label>
+          <select name="sector">
+            <option value="">All sectors</option>
+            {% for s in sector_list %}
+              <option value="{{ s }}" {% if sector == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
           <select name="sort">
             {% for key, label in sort_options %}
               <option value="{{ key }}" {% if sort == key %}selected{% endif %}>{{ label }}</option>
@@ -44,20 +51,38 @@
       </div>
     </section>
 
+    {% if horizon_cards %}
+    <div class="panel" style="margin-bottom:1rem">
+      <h2>Best by horizon</h2>
+      <div class="metrics">
+        {% for h in horizon_cards %}
+        <div class="metric">
+          <div class="label">{{ h.label }}</div>
+          <div class="value"><a class="sym" href="/stock/{{ h.symbol }}">{{ h.symbol or "—" }}</a></div>
+          <div class="muted small">{% if h.ret is not none %}{{ '%.1f'|format(h.ret * 100) }}%{% endif %} {% if h.sector %}· {{ h.sector }}{% endif %}</div>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="small" style="margin-top:0.75rem"><a href="/horizons">Full horizon leaderboards →</a> · <a href="/sectors">Sector boards →</a></p>
+    </div>
+    {% endif %}
+
     <div class="panel">
-      <h2>Leaderboard</h2>
+      <h2>Leaderboard{% if sector %} · {{ sector }}{% endif %}</h2>
       <div style="overflow-x:auto">
         <table>
           <thead>
             <tr>
               <th>Rank</th>
               <th>Symbol</th>
+              <th>Sector</th>
               <th>Score</th>
+              <th>1W</th>
               <th>1M</th>
               <th>3M</th>
+              <th>6M</th>
+              <th>1Y</th>
               <th>Sharpe</th>
-              <th>Max DD</th>
-              <th>RSI</th>
               <th>Price</th>
             </tr>
           </thead>
@@ -66,12 +91,14 @@
             <tr>
               <td>{{ r.rank }}</td>
               <td><a class="sym" href="/stock/{{ r.symbol }}">{{ r.symbol }}</a></td>
+              <td><a href="/sectors/{{ r.sector }}">{{ r.sector }}</a></td>
               <td>{{ '%.3f'|format(r.score) }}</td>
+              <td class="{% if r.return_1w >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_1w * 100) }}%</td>
               <td class="{% if r.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_1m * 100) }}%</td>
               <td class="{% if r.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_3m * 100) }}%</td>
+              <td class="{% if r.return_6m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_6m * 100) }}%</td>
+              <td class="{% if r.return_1y >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_1y * 100) }}%</td>
               <td>{{ '%.2f'|format(r.sharpe_60d) }}</td>
-              <td class="neg">{{ '%.1f'|format(r.max_drawdown * 100) }}%</td>
-              <td>{{ '%.0f'|format(r.rsi_14) }}</td>
               <td>${{ '%.2f'|format(r.last_price) }}</td>
             </tr>
             {% endfor %}

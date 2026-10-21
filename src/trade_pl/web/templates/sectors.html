@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sectors · trade_pl{% endblock %}
+{% block content %}
+  <div class="panel">
+    <h2>Sectors</h2>
+    <p class="muted small">Tech, energy, healthcare, and other sector boards from the latest run.</p>
+    <div class="metrics" style="margin-top:1rem">
+      {% for name, data in (payload.sectors or {}).items() %}
+      <a class="metric" href="/sectors/{{ name }}" style="color:inherit;text-decoration:none">
+        <div class="label">{{ name }}</div>
+        <div class="value">{{ data.count }}</div>
+        <div class="muted small">
+          {% if data.top_by_score %}
+            top: {{ data.top_by_score[0].symbol }}
+          {% endif %}
+        </div>
+      </a>
+      {% else %}
+      <p class="muted">No sector report yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+{% endblock %}

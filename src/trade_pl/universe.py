@@ -5,30 +5,18 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-# Liquid US large/mid universe for v1 (no network required to list names).
-# Expand via config or external CSV later.
-DEFAULT_TICKERS: list[str] = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "BRK-B", "LLY", "AVGO", "JPM",
-    "TSLA", "UNH", "XOM", "V", "MA", "COST", "HD", "PG", "JNJ", "ABBV",
-    "CRM", "BAC", "NFLX", "KO", "PEP", "MRK", "CVX", "WMT", "AMD", "ORCL",
-    "ADBE", "CSCO", "ACN", "TMO", "MCD", "ABT", "LIN", "DHR", "INTC", "TXN",
-    "PM", "IBM", "QCOM", "CAT", "GE", "AMAT", "ISRG", "NOW", "BX", "GS",
-    "SPGI", "BKNG", "AXP", "MS", "UBER", "PFE", "DIS", "NEE", "T", "CMCSA",
-    "LOW", "UNP", "HON", "AMGN", "RTX", "SYK", "PGR", "BLK", "TJX", "VRTX",
-    "PLD", "COP", "ADP", "C", "BMY", "DE", "MDT", "SBUX", "LMT", "ADI",
-    "GILD", "REGN", "PANW", "MU", "FI", "ETN", "SCHW", "CB", "MMC", "SO",
-    "BSX", "CI", "DUK", "EQIX", "SHW", "KLAC", "CDNS", "SNPS", "ANET", "APH",
-    "CME", "ICE", "WM", "ITW", "MO", "ZTS", "PH", "BDX", "SLB", "CSX",
-    "MCK", "TDG", "EMR", "ORLY", "HCA", "CTAS", "MCO", "NOC", "PYPL", "MAR",
-    "AON", "USB", "PNC", "GM", "F", "NKE", "BA", "CVS", "WFC", "TGT",
-]
+from trade_pl.sectors import all_tickers_with_sector, sector_of, tickers_for_limit
 
 
 def default_universe(limit: int | None = None) -> list[str]:
-    tickers = list(DEFAULT_TICKERS)
-    if limit is not None:
-        tickers = tickers[: max(1, limit)]
-    return tickers
+    return tickers_for_limit(limit)
+
+
+def sector_map_for(tickers: list[str] | None = None) -> dict[str, str]:
+    full = all_tickers_with_sector()
+    if tickers is None:
+        return full
+    return {t: full.get(t, sector_of(t)) for t in tickers}
 
 
 def load_universe_file(path: Path) -> list[str]:
@@ -36,20 +24,32 @@ def load_universe_file(path: Path) -> list[str]:
     if path.suffix.lower() == ".json":
         data = json.loads(text)
         if isinstance(data, dict) and "tickers" in data:
-            return [str(t).upper() for t in data["tickers"]]
+            return [str(t).upper().replace(".", "-") for t in data["tickers"]]
         if isinstance(data, list):
-            return [str(t).upper() for t in data]
+            return [str(t).upper().replace(".", "-") for t in data]
         raise ValueError(f"Unsupported universe JSON in {path}")
-    return [line.strip().upper() for line in text.splitlines() if line.strip() and not line.startswith("#")]
+    if path.suffix.lower() == ".csv":
+        import pandas as pd
+
+        df = pd.read_csv(path)
+        col = "symbol" if "symbol" in df.columns else df.columns[0]
+        return [str(t).upper().replace(".", "-") for t in df[col].tolist()]
+    return [
+        line.strip().upper().replace(".", "-")
+        for line in text.splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
 
 
 def save_universe(tickers: list[str], out_dir: Path, criteria: dict[str, Any] | None = None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{date.today().isoformat()}.json"
+    smap = sector_map_for(tickers)
     payload = {
         "as_of": date.today().isoformat(),
         "count": len(tickers),
         "tickers": tickers,
+        "sectors": smap,
         "criteria": criteria or {},
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

@@ -1,11 +1,11 @@
 metrics_version: metrics_v1
 
-# Universe: liquid US large/mid names for v1 (expand later)
-universe_size: 80
-lookback_days: 400
+# Full curated multi-sector universe (~1000). Cap with --universe-size only for quick tests.
+universe_size: 1000
+lookback_days: 420
 min_price: 5.0
-min_avg_volume: 500000
-min_history_days: 120
+min_avg_volume: 250000
+min_history_days: 80
 
 # Ranking weights (must sum ~1.0)
 weights:
@@ -15,15 +15,20 @@ weights:
   low_drawdown: 0.15
   liquidity: 0.10
 
-# Plot only the top K after ranking
-plot_top_k: 25
+# Top lists: large enough for a real research board
+plot_top_k: 150
+enrich_top_k: 300
+horizon_top_n: 100
+sector_top_n: 50
 
-# Parallel downloads (keep modest for Yahoo rate limits)
-ingest_workers: 8
+# Parallel downloads (Yahoo rate limits — raise carefully)
+ingest_workers: 10
+enrich_workers: 6
 
 paths:
   data_raw: data/raw
   data_metrics: data/metrics
+  data_enrichment: data/enrichment
   plots: plots
   reports: reports
   universes: universes

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Horizons · trade_pl{% endblock %}
+{% block content %}
+  <div class="panel">
+    <h2>Best performing by time horizon</h2>
+    <p class="muted small">Week / month / quarter / half-year / year leaders from the latest scored universe.</p>
+  </div>
+  {% for key, data in (horizons.horizons or {}).items() %}
+  <div class="panel" style="margin-top:1rem">
+    <h2>{{ data.label }} <span class="muted small">({{ data.metric }})</span></h2>
+    {% if data.best %}
+      <p>Best: <a class="sym" href="/stock/{{ data.best.symbol }}">{{ data.best.symbol }}</a>
+        · {{ data.best.sector }}
+        · {{ '%.1f'|format(data.best[data.metric] * 100) }}%
+      </p>
+    {% endif %}
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Symbol</th><th>Sector</th><th>Return</th><th>Score</th><th>Rank</th><th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in data.top %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><a class="sym" href="/stock/{{ r.symbol }}">{{ r.symbol }}</a></td>
+            <td>{{ r.sector }}</td>
+            <td class="pos">{{ '%.1f'|format(r[data.metric] * 100) }}%</td>
+            <td>{{ '%.3f'|format(r.score) }}</td>
+            <td>{{ r.rank }}</td>
+            <td>${{ '%.2f'|format(r.last_price) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel empty"><p class="muted">No horizon report yet. Re-run the pipeline.</p></div>
+  {% endfor %}
+{% endblock %}

@@ -4,20 +4,151 @@
   <div class="panel">
     <div class="badge">ticker detail</div>
     <h1 class="pick-symbol" style="font-size:2rem">{{ symbol }}</h1>
+    {% if profile and profile.name %}<p class="muted">{{ profile.name }}{% if profile.sector %} · {{ profile.sector }}{% endif %}{% if profile.industry %} · {{ profile.industry }}{% endif %}</p>{% endif %}
     {% if row %}
     <div class="metrics">
       <div class="metric"><div class="label">Rank</div><div class="value">#{{ row.rank }}</div></div>
       <div class="metric"><div class="label">Score</div><div class="value">{{ '%.3f'|format(row.score) }}</div></div>
-      <div class="metric"><div class="label">1M</div><div class="value {% if row.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(row.return_1m * 100) }}%</div></div>
-      <div class="metric"><div class="label">3M</div><div class="value {% if row.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(row.return_3m * 100) }}%</div></div>
-      <div class="metric"><div class="label">6M</div><div class="value {% if row.return_6m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(row.return_6m * 100) }}%</div></div>
+      <div class="metric"><div class="label">Sector</div><div class="value" style="font-size:0.9rem"><a href="/sectors/{{ row.sector }}">{{ row.sector }}</a></div></div>
+      <div class="metric"><div class="label">1W</div><div class="value">{{ '%.1f'|format(row.return_1w * 100) }}%</div></div>
+      <div class="metric"><div class="label">1M</div><div class="value">{{ '%.1f'|format(row.return_1m * 100) }}%</div></div>
+      <div class="metric"><div class="label">3M</div><div class="value">{{ '%.1f'|format(row.return_3m * 100) }}%</div></div>
+      <div class="metric"><div class="label">6M</div><div class="value">{{ '%.1f'|format(row.return_6m * 100) }}%</div></div>
+      <div class="metric"><div class="label">1Y</div><div class="value">{{ '%.1f'|format(row.return_1y * 100) }}%</div></div>
       <div class="metric"><div class="label">Sharpe</div><div class="value">{{ '%.2f'|format(row.sharpe_60d) }}</div></div>
       <div class="metric"><div class="label">Max DD</div><div class="value neg">{{ '%.1f'|format(row.max_drawdown * 100) }}%</div></div>
-      <div class="metric"><div class="label">RSI</div><div class="value">{{ '%.0f'|format(row.rsi_14) }}</div></div>
       <div class="metric"><div class="label">Price</div><div class="value">${{ '%.2f'|format(row.last_price) }}</div></div>
     </div>
+    {% endif %}
+
+    {% if profile %}
+    <div class="metrics" style="margin-top:1rem">
+      <div class="metric"><div class="label">Market cap</div><div class="value">{{ profile.market_cap|money }}</div></div>
+      <div class="metric"><div class="label">Trailing P/E</div><div class="value">{% if profile.trailing_pe %}{{ '%.1f'|format(profile.trailing_pe) }}{% else %}—{% endif %}</div></div>
+      <div class="metric"><div class="label">Forward P/E</div><div class="value">{% if profile.forward_pe %}{{ '%.1f'|format(profile.forward_pe) }}{% else %}—{% endif %}</div></div>
+      <div class="metric"><div class="label">Rev growth</div><div class="value">{% if profile.revenue_growth %}{{ '%.1f'|format(profile.revenue_growth * 100) }}%{% else %}—{% endif %}</div></div>
+      <div class="metric"><div class="label">Profit margin</div><div class="value">{% if profile.profit_margins %}{{ '%.1f'|format(profile.profit_margins * 100) }}%{% else %}—{% endif %}</div></div>
+      <div class="metric"><div class="label">Dividend</div><div class="value">{% if profile.dividend_yield %}{{ '%.2f'|format(profile.dividend_yield * 100 if profile.dividend_yield < 1 else profile.dividend_yield) }}%{% else %}—{% endif %}</div></div>
+      <div class="metric"><div class="label">52w high</div><div class="value">{% if profile.fifty_two_week_high %}${{ '%.2f'|format(profile.fifty_two_week_high) }}{% else %}—{% endif %}</div></div>
+      <div class="metric"><div class="label">Target</div><div class="value">{% if profile.target_mean_price %}${{ '%.2f'|format(profile.target_mean_price) }}{% else %}—{% endif %}</div></div>
+      <div class="metric"><div class="label">Rec</div><div class="value" style="font-size:0.9rem">{{ profile.recommendation or "—" }}</div></div>
+    </div>
+
+    <div style="margin-top:1.2rem">
+      <h2>Key dates</h2>
+      <div class="metrics">
+        <div class="metric"><div class="label">Earnings</div><div class="value" style="font-size:0.95rem">{{ profile.earnings_date or "—" }}</div></div>
+        <div class="metric"><div class="label">Ex-dividend</div><div class="value" style="font-size:0.95rem">{{ profile.ex_dividend_date or "—" }}</div></div>
+      </div>
+      {% if profile.earnings_dates %}
+      <div style="overflow-x:auto;margin-top:0.75rem">
+        <table>
+          <thead><tr>{% for k in profile.earnings_dates[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for ed in profile.earnings_dates[:6] %}
+            <tr>{% for v in ed.values() %}<td>{{ v }}</td>{% endfor %}</tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if profile.summary %}
+    <div style="margin-top:1.2rem">
+      <h2>Business</h2>
+      <p class="muted small" style="white-space:pre-wrap;max-height:160px;overflow:auto">{{ profile.summary }}</p>
+    </div>
+    {% endif %}
+
+    {% if profile.financials and profile.financials.income %}
+    <div style="margin-top:1.2rem">
+      <h2>Income statement (recent periods)</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Period</th><th>Revenue</th><th>Gross profit</th><th>Op. income</th><th>Net income</th><th>EBITDA</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rowf in profile.financials.income %}
+            <tr>
+              <td>{{ rowf.period }}</td>
+              <td>{{ rowf['Total Revenue']|money }}</td>
+              <td>{{ rowf['Gross Profit']|money }}</td>
+              <td>{{ rowf['Operating Income']|money }}</td>
+              <td>{{ rowf['Net Income']|money }}</td>
+              <td>{{ rowf['EBITDA']|money }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if profile.financials and profile.financials.balance %}
+    <div style="margin-top:1.2rem">
+      <h2>Balance sheet</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Period</th><th>Assets</th><th>Liabilities</th><th>Equity</th><th>Cash</th><th>Debt</th></tr>
+          </thead>
+          <tbody>
+            {% for rowf in profile.financials.balance %}
+            <tr>
+              <td>{{ rowf.period }}</td>
+              <td>{{ rowf['Total Assets']|money }}</td>
+              <td>{{ rowf['Total Liabilities Net Minority Interest']|money }}</td>
+              <td>{{ rowf['Stockholders Equity']|money }}</td>
+              <td>{{ rowf['Cash And Cash Equivalents']|money }}</td>
+              <td>{{ rowf['Total Debt']|money }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if profile.financials and profile.financials.cashflow %}
+    <div style="margin-top:1.2rem">
+      <h2>Cash flow</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Period</th><th>Operating CF</th><th>CapEx</th><th>Free CF</th></tr></thead>
+          <tbody>
+            {% for rowf in profile.financials.cashflow %}
+            <tr>
+              <td>{{ rowf.period }}</td>
+              <td>{{ rowf['Operating Cash Flow']|money }}</td>
+              <td>{{ rowf['Capital Expenditure']|money }}</td>
+              <td>{{ rowf['Free Cash Flow']|money }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if profile.news %}
+    <div style="margin-top:1.2rem">
+      <h2>News</h2>
+      <ul style="padding-left:1.1rem;margin:0.5rem 0 0">
+        {% for n in profile.news %}
+        <li style="margin:0.45rem 0">
+          {% if n.link %}<a href="{{ n.link }}" target="_blank" rel="noopener">{{ n.title }}</a>{% else %}{{ n.title }}{% endif %}
+          <span class="muted small"> — {{ n.publisher or "" }} {% if n.published %}· {{ n.published }}{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
     {% else %}
-      <p class="muted">No summary row for this symbol in the latest leaderboard.</p>
+    <p class="muted" style="margin-top:1rem">No enrichment profile yet for {{ symbol }}. Re-run without <code>--skip-enrich</code> (top names only).</p>
     {% endif %}
 
     <div class="tabs">
@@ -31,10 +162,7 @@
         <iframe src="/plots/{{ symbol }}/{{ chart }}.html" title="{{ symbol }} {{ chart }}"></iframe>
       </div>
     {% else %}
-      <p class="muted" style="margin-top:1rem">
-        No plot for {{ symbol }} yet (plots are generated for top-K only).
-        Re-run with a larger <code>--plot-top-k</code> or open a higher-ranked name.
-      </p>
+      <p class="muted" style="margin-top:1rem">No plot yet (plots generated for top-K only).</p>
     {% endif %}
   </div>
 {% endblock %}

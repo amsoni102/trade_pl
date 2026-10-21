@@ -17,6 +17,7 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
     for key, default in [
         ("data_raw", "data/raw"),
         ("data_metrics", "data/metrics"),
+        ("data_enrichment", "data/enrichment"),
         ("plots", "plots"),
         ("reports", "reports"),
         ("universes", "universes"),
@@ -29,5 +30,5 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
 
 
 def ensure_dirs(cfg: dict[str, Any]) -> None:
-    for key in ("data_raw", "data_metrics", "plots", "reports", "universes"):
+    for key in ("data_raw", "data_metrics", "data_enrichment", "plots", "reports", "universes"):
         Path(cfg["paths"][key]).mkdir(parents=True, exist_ok=True)
