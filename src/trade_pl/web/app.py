@@ -130,8 +130,12 @@ def index(
             view = view.sort_values(sort, ascending=ascending)
         else:
             view = view.sort_values("score", ascending=False)
-        # Show the full scored board (typically hundreds–1000), not a tiny preview.
+        # Show the full scored board. Keep global `rank`, and add sequential
+        # `list_rank` for the current filtered view (so sector pages don't look "broken").
         rows = view.to_dict(orient="records")
+        for i, r in enumerate(rows, start=1):
+            r["list_rank"] = i
+            r["global_rank"] = r.get("rank")
 
     horizon_cards = []
     for key, data in (horizons.get("horizons") or {}).items():
@@ -197,6 +201,9 @@ def sector_detail(request: Request, sector: str) -> HTMLResponse:
     rows = []
     if not df.empty and "sector" in df.columns:
         rows = df[df["sector"] == sector].sort_values("score", ascending=False).to_dict(orient="records")
+        for i, r in enumerate(rows, start=1):
+            r["list_rank"] = i
+            r["global_rank"] = r.get("rank")
     return templates.TemplateResponse(
         request,
         "sector_detail.html",

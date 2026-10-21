@@ -18,13 +18,14 @@
       <table>
         <thead>
           <tr>
-            <th>Rank</th><th>Symbol</th><th>Score</th><th>1W</th><th>1M</th><th>3M</th><th>6M</th><th>1Y</th><th>Sharpe</th><th>Price</th>
+            <th># in sector</th><th>Overall</th><th>Symbol</th><th>Score</th><th>1W</th><th>1M</th><th>3M</th><th>6M</th><th>1Y</th><th>Sharpe</th><th>Price</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
           <tr>
-            <td>{{ r.rank }}</td>
+            <td>{{ r.list_rank }}</td>
+            <td class="muted">{{ r.global_rank }}</td>
             <td><a class="sym" href="/stock/{{ r.symbol }}">{{ r.symbol }}</a></td>
             <td>{{ '%.3f'|format(r.score) }}</td>
             <td>{{ '%.1f'|format(r.return_1w * 100) }}%</td>

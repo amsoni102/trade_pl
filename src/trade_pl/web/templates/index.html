@@ -73,7 +73,8 @@
         <table>
           <thead>
             <tr>
-              <th>Rank</th>
+              <th>{% if sector %}# in sector{% else %}Rank{% endif %}</th>
+              {% if sector %}<th>Overall</th>{% endif %}
               <th>Symbol</th>
               <th>Sector</th>
               <th>Score</th>
@@ -89,7 +90,8 @@
           <tbody>
             {% for r in rows %}
             <tr>
-              <td>{{ r.rank }}</td>
+              <td>{{ r.list_rank }}</td>
+              {% if sector %}<td class="muted">{{ r.global_rank }}</td>{% endif %}
               <td><a class="sym" href="/stock/{{ r.symbol }}">{{ r.symbol }}</a></td>
               <td><a href="/sectors/{{ r.sector }}">{{ r.sector }}</a></td>
               <td>{{ '%.3f'|format(r.score) }}</td>
