@@ -154,18 +154,29 @@ class BreakingNewsScanner:
         for it in items:
             it["tickers"] = _match_tickers(it.get("title", ""), self.universe)
             it["breaking"] = _is_breaking(it)
+            it["category"] = _categorize(it)
+            it["noise"] = _is_noise(it)
+            it["priority"] = _priority_score(it)
 
-        deduped = _dedupe(items)
-        deduped.sort(key=lambda x: (x.get("breaking", False), x.get("published_ts") or 0), reverse=True)
+        deduped = [x for x in _dedupe(items) if not x.get("noise")]
+        deduped.sort(
+            key=lambda x: (x.get("priority", 0), x.get("published_ts") or 0),
+            reverse=True,
+        )
+        top = deduped[:100]
+        groups = _group_items(top)
 
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "scanning": False,
-            "items": deduped[:80],
+            "items": top,
+            "groups": groups,
+            "breaking": [x for x in top if x.get("breaking")][:20],
+            "with_tickers": [x for x in top if x.get("tickers")][:30],
             "sources_ok": ok,
             "sources_failed": failed,
             "error": None,
-            "count": len(deduped[:80]),
+            "count": len(top),
         }
         with self._lock:
             self._state = payload
@@ -334,6 +345,85 @@ def _is_breaking(item: dict[str, Any]) -> bool:
     if ts and (time.time() - ts) < 45 * 60:
         return True
     return False
+
+
+def _is_noise(item: dict[str, Any]) -> bool:
+    title = (item.get("title") or "").lower()
+    noise_bits = (
+        "should you buy",
+        "should you sell",
+        "stocks to watch",
+        "top 10",
+        "top 5",
+        "money-saving",
+        "money saving",
+        "from our readers",
+        "newsletter",
+        "sponsored",
+        "what to expect from",
+        "is a better buy",
+        "outpacing its",
+        "outperforming other",
+    )
+    return any(b in title for b in noise_bits)
+
+
+def _categorize(item: dict[str, Any]) -> str:
+    title = (item.get("title") or "").lower()
+    source = (item.get("source") or "").lower()
+    rules = [
+        ("Earnings", ("earnings", "q1 ", "q2 ", "q3 ", "q4 ", "results", "eps", "guidance")),
+        ("Fed / Macro", ("fed ", "inflation", "cpi", "gdp", "treasury", "rate cut", "rate hike", "jobs report", "unemployment", "mortgage")),
+        ("M&A / Deals", ("acquires", "acquisition", "merger", "buyout", "takeover", "deal")),
+        ("Markets", ("stock market", "s&p", "nasdaq", "dow ", "futures", "rally", "selloff", "wall street")),
+        ("Tech / AI", ("ai ", "artificial intelligence", "chip", "semiconductor", "nvidia", "cloud", "software")),
+        ("Energy", ("oil", "crude", "opec", "gas ", "refiner", "energy")),
+        ("Healthcare", ("fda", "drug", "vaccine", "biotech", "pharma", "cancer")),
+    ]
+    for name, keys in rules:
+        if any(k in title for k in keys):
+            return name
+    if "cnbc" in source or "marketwatch" in source or "yahoo" in source:
+        return "Markets"
+    if item.get("tickers"):
+        return "Company news"
+    return "General"
+
+
+def _priority_score(item: dict[str, Any]) -> float:
+    score = 0.0
+    if item.get("breaking"):
+        score += 5.0
+    if item.get("tickers"):
+        score += 2.0 + min(2.0, 0.5 * len(item["tickers"]))
+    cat = item.get("category") or ""
+    if cat in {"Earnings", "Fed / Macro", "M&A / Deals", "Markets"}:
+        score += 1.5
+    ts = item.get("published_ts") or 0
+    if ts:
+        age_h = max(0.0, (time.time() - ts) / 3600.0)
+        score += max(0.0, 3.0 - age_h)  # fresher = higher
+    return score
+
+
+def _group_items(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    order = [
+        "Fed / Macro",
+        "Markets",
+        "Earnings",
+        "M&A / Deals",
+        "Tech / AI",
+        "Energy",
+        "Healthcare",
+        "Company news",
+        "General",
+    ]
+    groups: dict[str, list[dict[str, Any]]] = {k: [] for k in order}
+    for it in items:
+        cat = it.get("category") or "General"
+        groups.setdefault(cat, []).append(it)
+    # drop empty
+    return {k: v for k, v in groups.items() if v}
 
 
 # Process-wide singleton used by the web app

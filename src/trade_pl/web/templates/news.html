@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Breaking news · trade_pl{% endblock %}
 {% block content %}
-  <div class="panel breaking-panel">
+  <div class="panel breaking-panel news-page">
     <div class="breaking-head">
       <div>
         <span class="live-dot"></span>
-        <h2 style="display:inline;margin:0">Breaking news</h2>
-        <p class="muted small" style="margin:0.35rem 0 0">
-          Auto-scans public finance RSS / news feeds every ~3 minutes while this website is running.
-          {% if updated_at %}Last update: {{ updated_at }}{% endif %}
+        <h2 style="display:inline;margin:0;color:#fff">Market news desk</h2>
+        <p class="news-meta">
+          Live feed while the site is up · refreshes about every 3 minutes
+          {% if updated_at %}· last update {{ updated_at[:19].replace('T', ' ') }} UTC{% endif %}
           {% if scanning %}· scanning now…{% endif %}
         </p>
       </div>
@@ -17,36 +17,96 @@
       </form>
     </div>
 
+    <div class="news-stats">
+      <div class="news-stat"><span class="k">Headlines</span><span class="v">{{ items|length }}</span></div>
+      <div class="news-stat"><span class="k">Urgent</span><span class="v">{{ breaking|length }}</span></div>
+      <div class="news-stat"><span class="k">Ticker-linked</span><span class="v">{{ with_tickers|length }}</span></div>
+      <div class="news-stat"><span class="k">Sources</span><span class="v">{{ sources_ok|length }}</span></div>
+    </div>
+
     {% if sources_ok %}
-      <p class="muted small">Active sources: {{ sources_ok|join(', ') }}</p>
-    {% endif %}
-    {% if sources_failed %}
-      <p class="muted small">Some sources failed (common with RSS rate limits): {{ sources_failed|length }}</p>
+      <p class="news-meta">Active: {{ sources_ok|join(' · ') }}</p>
     {% endif %}
 
-    {% if items %}
-    <ul class="breaking-list tall">
-      {% for n in items %}
-      <li>
-        {% if n.breaking %}<span class="flash">BREAKING</span>{% endif %}
-        {% if n.link %}
-          <a href="{{ n.link }}" target="_blank" rel="noopener">{{ n.title }}</a>
-        {% else %}
-          {{ n.title }}
-        {% endif %}
-        <div class="muted small">{{ n.source }}{% if n.published %} · {{ n.published }}{% endif %}</div>
-        {% for t in n.tickers %}
-          <a class="sym-chip" href="/stock/{{ t }}">{{ t }}</a>
-        {% endfor %}
-      </li>
+    <div class="news-jump">
+      <a href="#urgent">Urgent</a>
+      <a href="#tickers">Ticker-linked</a>
+      {% for cat, _ in groups.items() %}
+        <a href="#cat-{{ loop.index }}">{{ cat }}</a>
       {% endfor %}
-    </ul>
-    {% else %}
-      <p class="muted">No headlines yet — wait for the first scan cycle.</p>
+    </div>
+
+    {% if breaking %}
+    <section class="news-section" id="urgent">
+      <h3><span class="flash">URGENT</span> Highest priority</h3>
+      <div class="news-grid">
+        {% for n in breaking[:12] %}
+        <article class="news-card urgent">
+          <a class="news-title" href="{{ n.link }}" target="_blank" rel="noopener">{{ n.title }}</a>
+          <div class="news-foot">
+            <span>{{ n.source }}</span>
+            {% if n.published %}<span>{{ n.published }}</span>{% endif %}
+            <span class="cat-pill">{{ n.category }}</span>
+          </div>
+          {% if n.tickers %}
+          <div class="chip-row">
+            {% for t in n.tickers %}<a class="sym-chip" href="/stock/{{ t }}">{{ t }}</a>{% endfor %}
+          </div>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </section>
     {% endif %}
+
+    {% if with_tickers %}
+    <section class="news-section" id="tickers">
+      <h3>Linked to your universe</h3>
+      <div class="news-grid">
+        {% for n in with_tickers[:18] %}
+        <article class="news-card">
+          {% if n.breaking %}<span class="flash">BREAKING</span>{% endif %}
+          <a class="news-title" href="{{ n.link }}" target="_blank" rel="noopener">{{ n.title }}</a>
+          <div class="news-foot">
+            <span>{{ n.source }}</span>
+            {% if n.published %}<span>{{ n.published }}</span>{% endif %}
+            <span class="cat-pill">{{ n.category }}</span>
+          </div>
+          <div class="chip-row">
+            {% for t in n.tickers %}<a class="sym-chip" href="/stock/{{ t }}">{{ t }}</a>{% endfor %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% for cat, cat_items in groups.items() %}
+    <section class="news-section" id="cat-{{ loop.index }}">
+      <h3>{{ cat }} <span class="count-pill">{{ cat_items|length }}</span></h3>
+      <div class="news-grid">
+        {% for n in cat_items[:12] %}
+        <article class="news-card">
+          {% if n.breaking %}<span class="flash">BREAKING</span>{% endif %}
+          <a class="news-title" href="{{ n.link }}" target="_blank" rel="noopener">{{ n.title }}</a>
+          <div class="news-foot">
+            <span>{{ n.source }}</span>
+            {% if n.published %}<span>{{ n.published }}</span>{% endif %}
+          </div>
+          {% if n.tickers %}
+          <div class="chip-row">
+            {% for t in n.tickers %}<a class="sym-chip" href="/stock/{{ t }}">{{ t }}</a>{% endfor %}
+          </div>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% else %}
+      <p class="news-meta">No headlines yet — wait for the first scan cycle.</p>
+    {% endfor %}
   </div>
   <script>
-    // Soft auto-reload of this page every 90s so the live feed updates in the browser.
     setTimeout(function () { location.reload(); }, 90000);
   </script>
 {% endblock %}

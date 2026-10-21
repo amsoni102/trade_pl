@@ -196,6 +196,8 @@ def index(
             "horizon_cards": horizon_cards,
             "sector_names": sorted((sectors_payload.get("sectors") or {}).keys()),
             "breaking_news": (news.get("items") or [])[:12],
+            "news_urgent": news.get("breaking") or [],
+            "news_tickers": news.get("with_tickers") or [],
             "news_updated_at": news.get("updated_at"),
             "news_scanning": news.get("scanning"),
             "news_sources_ok": news.get("sources_ok") or [],
@@ -211,6 +213,9 @@ def news_page(request: Request) -> HTMLResponse:
         "news.html",
         {
             "items": news.get("items") or [],
+            "groups": news.get("groups") or {},
+            "breaking": news.get("breaking") or [],
+            "with_tickers": news.get("with_tickers") or [],
             "updated_at": news.get("updated_at"),
             "scanning": news.get("scanning"),
             "sources_ok": news.get("sources_ok") or [],
