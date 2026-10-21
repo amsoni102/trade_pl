@@ -68,6 +68,9 @@ def _ts_to_iso(v: Any) -> str | None:
 
 
 def fetch_profile(symbol: str) -> dict[str, Any]:
+    from trade_pl.search import normalize_symbol
+
+    symbol = normalize_symbol(symbol)
     t = yf.Ticker(symbol)
     info: dict[str, Any] = {}
     try:
@@ -231,8 +234,7 @@ def enrich_many(
     def _one(sym: str) -> str | None:
         try:
             profile = fetch_profile(sym)
-            path = out_dir / f"{sym}.json"
-            path.write_text(json.dumps(profile, indent=2, default=str), encoding="utf-8")
+            save_profile(out_dir, profile)
             return sym
         except Exception as exc:  # noqa: BLE001
             logger.warning("enrich failed %s: %s", sym, exc)
@@ -247,8 +249,26 @@ def enrich_many(
     return done
 
 
+def profile_path(out_dir: Path, symbol: str) -> Path:
+    from trade_pl.search import normalize_symbol
+
+    return out_dir / f"{normalize_symbol(symbol)}.json"
+
+
+def save_profile(out_dir: Path, profile: dict[str, Any]) -> Path:
+    """Persist one enrichment profile (financials/news/etc.) for later search + detail pages."""
+    from trade_pl.search import normalize_symbol
+
+    symbol = normalize_symbol(str(profile.get("symbol") or ""))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = profile_path(out_dir, symbol)
+    payload = {**profile, "symbol": symbol}
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    return path
+
+
 def load_profile(out_dir: Path, symbol: str) -> dict[str, Any] | None:
-    path = out_dir / f"{symbol.upper()}.json"
+    path = profile_path(out_dir, symbol)
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))

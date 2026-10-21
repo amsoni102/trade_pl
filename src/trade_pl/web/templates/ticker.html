@@ -5,6 +5,13 @@
     <div class="badge">ticker detail</div>
     <h1 class="pick-symbol" style="font-size:2rem">{{ symbol }}</h1>
     {% if profile and profile.name %}<p class="muted">{{ profile.name }}{% if profile.sector %} · {{ profile.sector }}{% endif %}{% if profile.industry %} · {{ profile.industry }}{% endif %}</p>{% endif %}
+    {% if not row %}
+    <p class="muted small" style="margin-top:0.5rem">
+      Not in the latest leaderboard — financials below are loaded on demand from public market data
+      (and cached under <code>data/enrichment/</code> for next time).
+      <a href="/search?q={{ symbol }}">Back to search</a>
+    </p>
+    {% endif %}
     {% if row %}
     <div class="metrics">
       <div class="metric"><div class="label">Rank</div><div class="value">#{{ row.rank }}</div></div>

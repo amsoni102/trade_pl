@@ -50,10 +50,19 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000)
 | Page | URL |
 |------|-----|
 | Leaderboard + horizon cards | `/` |
+| Search by name or ticker | `/search?q=Siemens+Energy` |
 | Week / month / year leaders | `/horizons` |
 | Sector boards | `/sectors` |
-| Ticker detail (news, financials, dates, charts) | `/stock/AAPL` |
+| Ticker detail (news, financials, dates, charts) | `/stock/AAPL` or `/stock/ENR.DE` |
 | Compare | `/compare?symbols=AAPL,MSFT,XOM` |
+
+### Stock search (smart storage)
+
+We do **not** store the whole market. Search works like this:
+
+1. Match against the latest leaderboard + any profiles already in `data/enrichment/`.
+2. If needed, ask Yahoo Finance for name→ticker hits (e.g. “Siemens Energy” → `ENR.DE`) and cache that query briefly in `data/search/`.
+3. Opening a ticker **lazy-loads** financials/news into `data/enrichment/{SYMBOL}.json` once, then reuses the file.
 
 ## Notes
 

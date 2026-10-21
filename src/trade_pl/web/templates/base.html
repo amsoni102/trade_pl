@@ -13,8 +13,19 @@
   <div class="wrap">
     <header class="topbar">
       <a class="brand" href="/">trade_<span>pl</span></a>
+      <form class="nav-search" action="/search" method="get" role="search">
+        <input
+          type="search"
+          name="q"
+          placeholder="Search stock…"
+          aria-label="Search stocks by name or ticker"
+          autocomplete="off"
+        />
+        <button type="submit">Search</button>
+      </form>
       <nav class="nav">
         <a href="/">Leaderboard</a>
+        <a href="/search">Search</a>
         <a href="/news">Breaking news</a>
         <a href="/horizons">Horizons</a>
         <a href="/sectors">Sectors</a>

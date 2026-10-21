@@ -14,7 +14,8 @@ from fastapi.templating import Jinja2Templates
 
 from trade_pl.breaking_news import get_scanner
 from trade_pl.config import ROOT, load_config
-from trade_pl.enrichment import load_profile
+from trade_pl.enrichment import load_profile, save_profile
+from trade_pl.search import normalize_symbol, search_stocks
 
 WEB_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
@@ -27,7 +28,27 @@ def _paths() -> dict[str, Path]:
         "plots": Path(cfg["paths"]["plots"]),
         "metrics": Path(cfg["paths"]["data_metrics"]),
         "enrichment": Path(cfg["paths"].get("data_enrichment", ROOT / "data" / "enrichment")),
+        "search": Path(cfg["paths"].get("data_search", ROOT / "data" / "search")),
     }
+
+
+def _leaderboard_rows() -> list[dict[str, Any]]:
+    df = load_leaderboard()
+    if df.empty:
+        return []
+    return df.to_dict(orient="records")
+
+
+def _run_search(q: str, limit: int = 12) -> list[dict[str, Any]]:
+    paths = _paths()
+    return search_stocks(
+        q,
+        leaderboard_rows=_leaderboard_rows(),
+        enrichment_dir=paths["enrichment"],
+        cache_dir=paths["search"],
+        limit=limit,
+        yahoo=True,
+    )
 
 
 @asynccontextmanager
@@ -275,6 +296,37 @@ def sector_detail(request: Request, sector: str) -> HTMLResponse:
     )
 
 
+@app.get("/search", response_class=HTMLResponse)
+def search_page(
+    request: Request,
+    q: str = Query(""),
+) -> HTMLResponse:
+    hits: list[dict[str, Any]] = []
+    error: str | None = None
+    query = q.strip()
+    if query:
+        try:
+            hits = _run_search(query, limit=15)
+        except Exception as exc:  # noqa: BLE001
+            error = str(exc)
+    return templates.TemplateResponse(
+        request,
+        "search.html",
+        {"q": query, "hits": hits, "error": error},
+    )
+
+
+@app.get("/api/search")
+def api_search(
+    q: str = Query(""),
+    limit: int = Query(10, ge=1, le=25),
+) -> dict[str, Any]:
+    query = q.strip()
+    if not query:
+        return {"q": "", "hits": []}
+    return {"q": query, "hits": _run_search(query, limit=limit)}
+
+
 @app.get("/stock/{symbol}", response_class=HTMLResponse)
 def stock_detail(
     request: Request,
@@ -282,13 +334,16 @@ def stock_detail(
     chart: str = Query("dashboard"),
     refresh: int = Query(0),
 ) -> HTMLResponse:
-    symbol = symbol.upper().replace(".", "-")
+    symbol = normalize_symbol(symbol)
     if chart not in {"dashboard", "drawdown", "forecast"}:
         chart = "dashboard"
     df = load_leaderboard()
     row = None
-    if not df.empty and symbol in set(df["symbol"]):
-        row = df[df["symbol"] == symbol].iloc[0].to_dict()
+    if not df.empty and symbol in set(df["symbol"].astype(str).map(normalize_symbol)):
+        # Match both BRK-B and BRK.B style keys from older runs
+        matched = df[df["symbol"].astype(str).map(normalize_symbol) == symbol]
+        if not matched.empty:
+            row = matched.iloc[0].to_dict()
     plots_dir = _paths()["plots"]
     metrics_dir = _paths()["metrics"]
     chart_path = plots_dir / symbol / f"{chart}.html"
@@ -313,17 +368,13 @@ def stock_detail(
 
     enrich_dir = _paths()["enrichment"]
     profile = load_profile(enrich_dir, symbol)
-    # Lazy-fetch news/financials on first open (or ?refresh=1) so non-top names still get detail.
+    # Lazy-fetch news/financials on first open (or ?refresh=1) so searched names still get detail.
     if profile is None or refresh or not (profile.get("news") or profile.get("financials", {}).get("income")):
         try:
             from trade_pl.enrichment import fetch_profile
 
             profile = fetch_profile(symbol)
-            enrich_dir.mkdir(parents=True, exist_ok=True)
-            (enrich_dir / f"{symbol}.json").write_text(
-                json.dumps(profile, indent=2, default=str),
-                encoding="utf-8",
-            )
+            save_profile(enrich_dir, profile)
         except Exception:
             profile = profile or None
     return templates.TemplateResponse(
@@ -346,10 +397,12 @@ def compare(
     symbols: str = Query(""),
 ) -> HTMLResponse:
     df = load_leaderboard()
-    wanted = [s.strip().upper().replace(".", "-") for s in symbols.split(",") if s.strip()][:5]
+    wanted = [normalize_symbol(s) for s in symbols.split(",") if s.strip()][:5]
     rows: list[dict[str, Any]] = []
     if not df.empty and wanted:
-        rows = df[df["symbol"].isin(wanted)].sort_values("rank").to_dict(orient="records")
+        view = df.copy()
+        view["_sym"] = view["symbol"].astype(str).map(normalize_symbol)
+        rows = view[view["_sym"].isin(wanted)].sort_values("rank").drop(columns=["_sym"]).to_dict(orient="records")
     return templates.TemplateResponse(
         request,
         "compare.html",
@@ -377,12 +430,14 @@ def api_sectors() -> dict[str, Any]:
 
 @app.get("/api/stock/{symbol}")
 def api_stock(symbol: str) -> dict[str, Any]:
-    symbol = symbol.upper().replace(".", "-")
+    symbol = normalize_symbol(symbol)
     profile = load_profile(_paths()["enrichment"], symbol) or {}
     df = load_leaderboard()
     row = {}
-    if not df.empty and symbol in set(df["symbol"]):
-        row = df[df["symbol"] == symbol].iloc[0].to_dict()
+    if not df.empty:
+        matched = df[df["symbol"].astype(str).map(normalize_symbol) == symbol]
+        if not matched.empty:
+            row = matched.iloc[0].to_dict()
     return {"metrics": row, "profile": profile}
 
 

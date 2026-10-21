@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{% if q %}{{ q }} · {% endif %}Search · trade_pl{% endblock %}
+{% block content %}
+  <section class="panel">
+    <div class="badge">stock search</div>
+    <h1 style="margin-top:0.4rem">Find a stock by name or ticker</h1>
+    <p class="muted small">
+      Searches your latest leaderboard and cached profiles first, then Yahoo Finance for names
+      outside the pipeline universe (e.g. <em>Siemens Energy</em>). Opening a result loads
+      financials/news on demand and caches them locally.
+    </p>
+    <form class="toolbar search-form" action="/search" method="get" style="margin-top:1rem">
+      <input
+        class="search-input"
+        type="search"
+        name="q"
+        value="{{ q }}"
+        placeholder="Siemens Energy, ENR.DE, Apple…"
+        autofocus
+        autocomplete="off"
+      />
+      <button type="submit">Search</button>
+    </form>
+  </section>
+
+  {% if error %}
+  <section class="panel" style="margin-top:1rem">
+    <p class="neg">Search failed: {{ error }}</p>
+  </section>
+  {% elif q and not hits %}
+  <section class="panel" style="margin-top:1rem">
+    <p class="muted">No matches for <strong>{{ q }}</strong>. Try the Yahoo ticker (e.g. ENR.DE) or a shorter company name.</p>
+  </section>
+  {% elif hits %}
+  <section class="panel" style="margin-top:1rem">
+    <h2>{{ hits|length }} result{% if hits|length != 1 %}s{% endif %} for “{{ q }}”</h2>
+    <div style="overflow-x:auto;margin-top:0.75rem">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Name</th>
+            <th>Exchange</th>
+            <th>Type</th>
+            <th>Source</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in hits %}
+          <tr>
+            <td><a class="sym" href="/stock/{{ h.symbol }}">{{ h.symbol }}</a></td>
+            <td>{{ h.name or "—" }}</td>
+            <td>{{ h.exchange or "—" }}</td>
+            <td>{{ h.type or "—" }}</td>
+            <td>
+              {% if h.in_leaderboard %}<span class="cat-pill">in board</span>{% endif %}
+              {% if h.has_profile %}<span class="cat-pill">cached</span>{% endif %}
+              <span class="news-meta">{{ h.source }}</span>
+            </td>
+            <td><a class="btn" href="/stock/{{ h.symbol }}">Open</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+{% endblock %}

@@ -10,6 +10,8 @@ make start    # runs pipeline (--universe-size 80) then http://127.0.0.1:8000
 make stop
 ```
 
+Search any stock by name or ticker at `/search` (e.g. “Siemens Energy” → `ENR.DE`). Financials are fetched on demand and cached under `data/enrichment/` — the pipeline does not need to store the whole market.
+
 ---
 
 ## Goal

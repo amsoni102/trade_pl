@@ -43,10 +43,34 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.85rem 1rem;
   padding: 0.85rem 0 1.4rem;
   border-bottom: 1px solid var(--line);
   margin-bottom: 1.5rem;
+}
+
+.nav-search {
+  display: flex;
+  flex: 1 1 220px;
+  max-width: 360px;
+  gap: 0.4rem;
+}
+
+.nav-search input[type="search"],
+.search-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.search-form {
+  width: 100%;
+}
+
+.search-form .search-input {
+  min-width: min(100%, 320px);
+  flex: 1 1 240px;
 }
 
 .brand {
