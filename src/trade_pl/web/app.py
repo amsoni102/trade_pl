@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -11,14 +12,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from trade_pl.breaking_news import get_scanner
 from trade_pl.config import ROOT, load_config
 from trade_pl.enrichment import load_profile
 
 WEB_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
-
-app = FastAPI(title="trade_pl", description="Local stock research website")
-app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 
 
 def _paths() -> dict[str, Path]:
@@ -29,6 +28,30 @@ def _paths() -> dict[str, Path]:
         "metrics": Path(cfg["paths"]["data_metrics"]),
         "enrichment": Path(cfg["paths"].get("data_enrichment", ROOT / "data" / "enrichment")),
     }
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Keep scanning public finance RSS / news feeds for as long as the website is up.
+    universe: list[str] = []
+    lb = _paths()["reports"] / "latest" / "leaderboard.csv"
+    if lb.exists():
+        try:
+            universe = pd.read_csv(lb)["symbol"].astype(str).head(300).tolist()
+        except Exception:
+            universe = []
+    scanner = get_scanner(cache_path=ROOT / "data" / "breaking_news.json", universe=universe)
+    scanner.start()
+    yield
+    scanner.stop()
+
+
+app = FastAPI(
+    title="trade_pl",
+    description="Local stock research website",
+    lifespan=lifespan,
+)
+app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 
 
 _PLOTS_DIR = _paths()["plots"]
@@ -150,6 +173,7 @@ def index(
             }
         )
 
+    news = get_scanner().snapshot()
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -171,8 +195,43 @@ def index(
             "sort_options": sort_options,
             "horizon_cards": horizon_cards,
             "sector_names": sorted((sectors_payload.get("sectors") or {}).keys()),
+            "breaking_news": (news.get("items") or [])[:12],
+            "news_updated_at": news.get("updated_at"),
+            "news_scanning": news.get("scanning"),
+            "news_sources_ok": news.get("sources_ok") or [],
         },
     )
+
+
+@app.get("/news", response_class=HTMLResponse)
+def news_page(request: Request) -> HTMLResponse:
+    news = get_scanner().snapshot()
+    return templates.TemplateResponse(
+        request,
+        "news.html",
+        {
+            "items": news.get("items") or [],
+            "updated_at": news.get("updated_at"),
+            "scanning": news.get("scanning"),
+            "sources_ok": news.get("sources_ok") or [],
+            "sources_failed": news.get("sources_failed") or [],
+        },
+    )
+
+
+@app.post("/api/breaking-news/refresh")
+def api_news_refresh() -> dict[str, Any]:
+    scanner = get_scanner()
+    # refresh in background thread so request returns quickly if already scanning
+    if not scanner.snapshot().get("scanning"):
+        threading = __import__("threading")
+        threading.Thread(target=scanner.refresh_once, daemon=True).start()
+    return {"status": "refreshing"}
+
+
+@app.get("/api/breaking-news")
+def api_breaking_news() -> dict[str, Any]:
+    return get_scanner().snapshot()
 
 
 @app.get("/horizons", response_class=HTMLResponse)
@@ -219,13 +278,34 @@ def stock_detail(
     refresh: int = Query(0),
 ) -> HTMLResponse:
     symbol = symbol.upper().replace(".", "-")
-    if chart not in {"dashboard", "drawdown"}:
+    if chart not in {"dashboard", "drawdown", "forecast"}:
         chart = "dashboard"
     df = load_leaderboard()
     row = None
     if not df.empty and symbol in set(df["symbol"]):
         row = df[df["symbol"] == symbol].iloc[0].to_dict()
-    chart_path = _paths()["plots"] / symbol / f"{chart}.html"
+    plots_dir = _paths()["plots"]
+    metrics_dir = _paths()["metrics"]
+    chart_path = plots_dir / symbol / f"{chart}.html"
+
+    # Lazy-build 5y forecast chart on first open if missing
+    if chart == "forecast" and not chart_path.exists():
+        try:
+            from trade_pl.forecast import forecast_symbol
+
+            forecast_symbol(symbol, metrics_dir, plots_dir)
+        except Exception:
+            pass
+        chart_path = plots_dir / symbol / f"{chart}.html"
+
+    forecast_summary = None
+    fjson = plots_dir / symbol / "forecast.json"
+    if fjson.exists():
+        try:
+            forecast_summary = json.loads(fjson.read_text(encoding="utf-8"))
+        except Exception:
+            forecast_summary = None
+
     enrich_dir = _paths()["enrichment"]
     profile = load_profile(enrich_dir, symbol)
     # Lazy-fetch news/financials on first open (or ?refresh=1) so non-top names still get detail.
@@ -236,7 +316,7 @@ def stock_detail(
             profile = fetch_profile(symbol)
             enrich_dir.mkdir(parents=True, exist_ok=True)
             (enrich_dir / f"{symbol}.json").write_text(
-                __import__("json").dumps(profile, indent=2, default=str),
+                json.dumps(profile, indent=2, default=str),
                 encoding="utf-8",
             )
         except Exception:
@@ -250,6 +330,7 @@ def stock_detail(
             "chart": chart,
             "has_chart": chart_path.exists(),
             "profile": profile,
+            "forecast": forecast_summary,
         },
     )
 

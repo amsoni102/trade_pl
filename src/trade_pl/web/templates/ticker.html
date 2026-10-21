@@ -151,18 +151,34 @@
     <p class="muted" style="margin-top:1rem">No enrichment profile yet for {{ symbol }}. Re-run without <code>--skip-enrich</code> (top names only).</p>
     {% endif %}
 
+    {% if forecast %}
+    <div style="margin-top:1.2rem">
+      <h2>5-year projection</h2>
+      <p class="muted small">{{ forecast.label }}</p>
+      <div class="metrics">
+        <div class="metric"><div class="label">Implied CAGR</div><div class="value">{{ '%.1f'|format(forecast.expected_cagr * 100) }}%</div></div>
+        <div class="metric"><div class="label">Hist vol</div><div class="value">{{ '%.0f'|format(forecast.hist_vol_ann * 100) }}%</div></div>
+        <div class="metric"><div class="label">Median @ 5y</div><div class="value">${{ '%.2f'|format(forecast.projected_median_5y) }}</div></div>
+        <div class="metric"><div class="label">Upside (median)</div><div class="value {% if forecast.upside_pct_median >= 0 %}pos{% else %}neg{% endif %}">{{ '%.0f'|format(forecast.upside_pct_median * 100) }}%</div></div>
+        <div class="metric"><div class="label">p10 @ 5y</div><div class="value">${{ '%.2f'|format(forecast.projected_p10_5y) }}</div></div>
+        <div class="metric"><div class="label">p90 @ 5y</div><div class="value">${{ '%.2f'|format(forecast.projected_p90_5y) }}</div></div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="tabs">
       <a class="{% if chart == 'dashboard' %}active{% endif %}" href="/stock/{{ symbol }}?chart=dashboard">Dashboard</a>
       <a class="{% if chart == 'drawdown' %}active{% endif %}" href="/stock/{{ symbol }}?chart=drawdown">Drawdown</a>
+      <a class="{% if chart == 'forecast' %}active{% endif %}" href="/stock/{{ symbol }}?chart=forecast">5y forecast</a>
       <a href="/">← Leaderboard</a>
     </div>
 
     {% if has_chart %}
       <div class="iframe-wrap">
-        <iframe src="/plots/{{ symbol }}/{{ chart }}.html" title="{{ symbol }} {{ chart }}"></iframe>
+        <iframe src="/plots/{{ symbol }}/{{ chart }}.html" title="{{ symbol }} {{ chart }}" style="{% if chart == 'forecast' %}height:560px{% endif %}"></iframe>
       </div>
     {% else %}
-      <p class="muted" style="margin-top:1rem">No plot yet (plots generated for top-K only).</p>
+      <p class="muted" style="margin-top:1rem">No plot yet. Open <strong>5y forecast</strong> to generate on demand, or re-run the pipeline for top names.</p>
     {% endif %}
   </div>
 {% endblock %}

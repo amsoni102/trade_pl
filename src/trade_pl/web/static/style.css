@@ -226,3 +226,80 @@ tr:hover td { background: rgba(45, 212, 191, 0.05); }
   text-align: center;
   color: var(--muted);
 }
+
+.breaking-panel {
+  margin-bottom: 1.25rem;
+  border-color: rgba(248, 113, 113, 0.35);
+  background:
+    linear-gradient(90deg, rgba(248, 113, 113, 0.08), transparent 40%),
+    linear-gradient(180deg, var(--bg-elev), var(--bg-soft));
+}
+
+.breaking-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.live-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.7);
+  animation: pulse 1.6s infinite;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(248, 113, 113, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
+}
+
+.breaking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.breaking-list.tall li {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.breaking-list li {
+  line-height: 1.35;
+  font-size: 0.95rem;
+}
+
+.flash {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #dc2626;
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+
+.sym-chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  margin-left: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(45, 212, 191, 0.08);
+}

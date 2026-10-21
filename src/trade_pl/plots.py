@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from trade_pl.forecast import forecast_symbol
+
 
 def _load_series(metrics_dir: Path, symbol: str) -> pd.DataFrame | None:
     path = metrics_dir / f"{symbol}_series.parquet"
@@ -102,9 +104,10 @@ def plot_symbol(symbol: str, metrics_dir: Path, plots_dir: Path) -> Path | None:
     dash.write_html(out / "dashboard.html", include_plotlyjs="cdn", full_html=True)
     dd = make_drawdown(series, symbol)
     dd.write_html(out / "drawdown.html", include_plotlyjs="cdn", full_html=True)
-    # also save lightweight JSON for web embedding
+    forecast_symbol(symbol, metrics_dir, plots_dir)
+    charts = ["dashboard.html", "drawdown.html", "forecast.html"]
     (out / "meta.json").write_text(
-        '{"symbol":"%s","charts":["dashboard.html","drawdown.html"]}' % symbol,
+        '{"symbol":"%s","charts":%s}' % (symbol, __import__("json").dumps(charts)),
         encoding="utf-8",
     )
     return out

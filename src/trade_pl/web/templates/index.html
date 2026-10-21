@@ -8,6 +8,43 @@
       <pre style="text-align:left;display:inline-block;background:#0003;padding:1rem;border-radius:8px">python -m trade_pl.run --universe-size 80</pre>
     </div>
   {% else %}
+    <section class="breaking-panel panel">
+      <div class="breaking-head">
+        <div>
+          <span class="live-dot" title="auto-refresh while site is up"></span>
+          <strong>Breaking news</strong>
+          <span class="muted small">live scan of finance feeds
+            {% if news_updated_at %}· updated {{ news_updated_at[:16].replace('T',' ') }} UTC{% endif %}
+            {% if news_scanning %}· scanning…{% endif %}
+          </span>
+        </div>
+        <a class="small" href="/news">Full feed →</a>
+      </div>
+      {% if breaking_news %}
+      <ul class="breaking-list">
+        {% for n in breaking_news %}
+        <li>
+          {% if n.breaking %}<span class="flash">BREAKING</span>{% endif %}
+          {% if n.link %}
+            <a href="{{ n.link }}" target="_blank" rel="noopener">{{ n.title }}</a>
+          {% else %}
+            {{ n.title }}
+          {% endif %}
+          <span class="muted small">{{ n.source }}{% if n.published %} · {{ n.published }}{% endif %}</span>
+          {% for t in n.tickers[:3] %}
+            <a class="sym-chip" href="/stock/{{ t }}">{{ t }}</a>
+          {% endfor %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+        <p class="muted small">Scanner starting — headlines appear within about a minute while the site stays up.</p>
+      {% endif %}
+      {% if news_sources_ok %}
+        <p class="muted small" style="margin-top:0.6rem">Sources: {{ news_sources_ok|join(', ') }}</p>
+      {% endif %}
+    </section>
+
     <section class="hero-pick">
       <div class="panel">
         <div class="badge">model suggested candidate</div>
