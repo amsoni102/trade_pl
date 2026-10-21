@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }} · trade_pl{% endblock %}
+{% block content %}
+  <div class="panel">
+    <div class="badge">ticker detail</div>
+    <h1 class="pick-symbol" style="font-size:2rem">{{ symbol }}</h1>
+    {% if row %}
+    <div class="metrics">
+      <div class="metric"><div class="label">Rank</div><div class="value">#{{ row.rank }}</div></div>
+      <div class="metric"><div class="label">Score</div><div class="value">{{ '%.3f'|format(row.score) }}</div></div>
+      <div class="metric"><div class="label">1M</div><div class="value {% if row.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(row.return_1m * 100) }}%</div></div>
+      <div class="metric"><div class="label">3M</div><div class="value {% if row.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(row.return_3m * 100) }}%</div></div>
+      <div class="metric"><div class="label">6M</div><div class="value {% if row.return_6m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(row.return_6m * 100) }}%</div></div>
+      <div class="metric"><div class="label">Sharpe</div><div class="value">{{ '%.2f'|format(row.sharpe_60d) }}</div></div>
+      <div class="metric"><div class="label">Max DD</div><div class="value neg">{{ '%.1f'|format(row.max_drawdown * 100) }}%</div></div>
+      <div class="metric"><div class="label">RSI</div><div class="value">{{ '%.0f'|format(row.rsi_14) }}</div></div>
+      <div class="metric"><div class="label">Price</div><div class="value">${{ '%.2f'|format(row.last_price) }}</div></div>
+    </div>
+    {% else %}
+      <p class="muted">No summary row for this symbol in the latest leaderboard.</p>
+    {% endif %}
+
+    <div class="tabs">
+      <a class="{% if chart == 'dashboard' %}active{% endif %}" href="/stock/{{ symbol }}?chart=dashboard">Dashboard</a>
+      <a class="{% if chart == 'drawdown' %}active{% endif %}" href="/stock/{{ symbol }}?chart=drawdown">Drawdown</a>
+      <a href="/">← Leaderboard</a>
+    </div>
+
+    {% if has_chart %}
+      <div class="iframe-wrap">
+        <iframe src="/plots/{{ symbol }}/{{ chart }}.html" title="{{ symbol }} {{ chart }}"></iframe>
+      </div>
+    {% else %}
+      <p class="muted" style="margin-top:1rem">
+        No plot for {{ symbol }} yet (plots are generated for top-K only).
+        Re-run with a larger <code>--plot-top-k</code> or open a higher-ranked name.
+      </p>
+    {% endif %}
+  </div>
+{% endblock %}

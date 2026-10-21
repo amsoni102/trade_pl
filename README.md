@@ -2,6 +2,14 @@
 
 Procedure and architecture plan for screening hundreds of top-performing stocks, computing trading metrics, and plotting results per ticker. This document is the source of truth for a later detailed analysis website.
 
+**Status:** v1 implemented locally — pipeline + website. See [GETTING_STARTED.md](GETTING_STARTED.md).
+
+```bash
+source .venv/bin/activate
+python -m trade_pl.run --universe-size 40    # ingest + score + plots
+python -m trade_pl.web.app                   # http://127.0.0.1:8000
+```
+
 ---
 
 ## Goal

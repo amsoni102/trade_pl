@@ -1,0 +1,29 @@
+metrics_version: metrics_v1
+
+# Universe: liquid US large/mid names for v1 (expand later)
+universe_size: 80
+lookback_days: 400
+min_price: 5.0
+min_avg_volume: 500000
+min_history_days: 120
+
+# Ranking weights (must sum ~1.0)
+weights:
+  return_3m: 0.35
+  return_1m: 0.15
+  sharpe: 0.25
+  low_drawdown: 0.15
+  liquidity: 0.10
+
+# Plot only the top K after ranking
+plot_top_k: 25
+
+# Parallel downloads (keep modest for Yahoo rate limits)
+ingest_workers: 8
+
+paths:
+  data_raw: data/raw
+  data_metrics: data/metrics
+  plots: plots
+  reports: reports
+  universes: universes

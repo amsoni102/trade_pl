@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Compare · trade_pl{% endblock %}
+{% block content %}
+  <div class="panel">
+    <h2>Compare tickers</h2>
+    <p class="muted small">Enter 2–5 symbols from the latest run (comma-separated).</p>
+    <form class="toolbar" method="get" action="/compare">
+      <input style="min-width:280px" type="text" name="symbols" value="{{ symbols_raw }}" placeholder="NVDA,AAPL,MSFT" />
+      <button type="submit">Compare</button>
+    </form>
+
+    {% if rows %}
+    <div style="overflow-x:auto;margin-top:1rem">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Rank</th>
+            <th>Score</th>
+            <th>1M</th>
+            <th>3M</th>
+            <th>Sharpe</th>
+            <th>Max DD</th>
+            <th>RSI</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td><a class="sym" href="/stock/{{ r.symbol }}">{{ r.symbol }}</a></td>
+            <td>{{ r.rank }}</td>
+            <td>{{ '%.3f'|format(r.score) }}</td>
+            <td class="{% if r.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_1m * 100) }}%</td>
+            <td class="{% if r.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_3m * 100) }}%</td>
+            <td>{{ '%.2f'|format(r.sharpe_60d) }}</td>
+            <td class="neg">{{ '%.1f'|format(r.max_drawdown * 100) }}%</td>
+            <td>{{ '%.0f'|format(r.rsi_14) }}</td>
+            <td>${{ '%.2f'|format(r.last_price) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% elif symbols_raw %}
+      <p class="muted">No matching symbols in the latest leaderboard.</p>
+    {% endif %}
+  </div>
+{% endblock %}

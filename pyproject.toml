@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trade-pl"
+version = "0.1.0"
+description = "Automated stock screening, metrics, plots, and local research website"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2.2.0",
+  "numpy>=1.26.0",
+  "yfinance>=0.2.40",
+  "pyarrow>=15.0.0",
+  "plotly>=5.22.0",
+  "pyyaml>=6.0.1",
+  "fastapi>=0.111.0",
+  "uvicorn[standard]>=0.30.0",
+  "jinja2>=3.1.4",
+  "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+trade-pl = "trade_pl.run:main"
+trade-pl-web = "trade_pl.web.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+trade_pl = ["web/templates/*.html", "web/static/*"]

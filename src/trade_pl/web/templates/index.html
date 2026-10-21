@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard · trade_pl{% endblock %}
+{% block content %}
+  {% if not rows %}
+    <div class="panel empty">
+      <h2>No report yet</h2>
+      <p class="muted">Run the pipeline first:</p>
+      <pre style="text-align:left;display:inline-block;background:#0003;padding:1rem;border-radius:8px">python -m trade_pl.run --universe-size 40</pre>
+    </div>
+  {% else %}
+    <section class="hero-pick">
+      <div class="panel">
+        <div class="badge">model suggested candidate</div>
+        <div class="pick-symbol">{{ pick.ticker if pick else "—" }}</div>
+        <p class="muted small">{{ pick.disclaimer if pick else "" }}</p>
+        {% if pick %}
+        <div class="metrics">
+          <div class="metric"><div class="label">Score</div><div class="value">{{ '%.3f'|format(pick.score) }}</div></div>
+          <div class="metric"><div class="label">3M return</div><div class="value {% if pick.metric_breakdown.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(pick.metric_breakdown.return_3m * 100) }}%</div></div>
+          <div class="metric"><div class="label">Sharpe 60d</div><div class="value">{{ '%.2f'|format(pick.metric_breakdown.sharpe_60d) }}</div></div>
+          <div class="metric"><div class="label">Max DD</div><div class="value neg">{{ '%.1f'|format(pick.metric_breakdown.max_drawdown * 100) }}%</div></div>
+          <div class="metric"><div class="label">Price</div><div class="value">${{ '%.2f'|format(pick.metric_breakdown.last_price) }}</div></div>
+        </div>
+        <p style="margin-top:1rem"><a class="btn" href="/stock/{{ pick.ticker }}">Open detail →</a></p>
+        {% endif %}
+      </div>
+      <div class="panel">
+        <h2>Latest run</h2>
+        <p class="muted small">As of {{ as_of }} · {{ rows|length }} names scored · metrics {{ metrics_version }}</p>
+        <div class="metrics">
+          <div class="metric"><div class="label">Universe plotted</div><div class="value">{{ plotted_n }}</div></div>
+          <div class="metric"><div class="label">Report</div><div class="value" style="font-size:0.85rem">{{ report_label }}</div></div>
+        </div>
+        <form class="toolbar" method="get" action="/" style="margin-top:1rem">
+          <label class="muted small">Sort</label>
+          <select name="sort">
+            {% for key, label in sort_options %}
+              <option value="{{ key }}" {% if sort == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="q" value="{{ q }}" placeholder="Filter ticker…" />
+          <button type="submit">Apply</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="panel">
+      <h2>Leaderboard</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Symbol</th>
+              <th>Score</th>
+              <th>1M</th>
+              <th>3M</th>
+              <th>Sharpe</th>
+              <th>Max DD</th>
+              <th>RSI</th>
+              <th>Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>{{ r.rank }}</td>
+              <td><a class="sym" href="/stock/{{ r.symbol }}">{{ r.symbol }}</a></td>
+              <td>{{ '%.3f'|format(r.score) }}</td>
+              <td class="{% if r.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_1m * 100) }}%</td>
+              <td class="{% if r.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_3m * 100) }}%</td>
+              <td>{{ '%.2f'|format(r.sharpe_60d) }}</td>
+              <td class="neg">{{ '%.1f'|format(r.max_drawdown * 100) }}%</td>
+              <td>{{ '%.0f'|format(r.rsi_14) }}</td>
+              <td>${{ '%.2f'|format(r.last_price) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
