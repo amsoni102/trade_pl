@@ -171,19 +171,102 @@ Orchestration options (pick one later): local cron, GitHub Actions (small univer
 
 **Purpose:** Reliable OHLCV (and optional fundamentals) for every selected ticker.
 
+### Getting data fast (the real bottleneck)
+
+Speed comes from **how** you fetch and store, not from clever scoring.
+
+#### Rule 1: Never download during the 10‑minute score run
+
+| Job | Network? | Goal |
+|-----|----------|------|
+| **Ingest** (nightly) | Yes | Fill/update `data/raw/` |
+| **Score** (morning / on demand) | No | Read Parquet only → rank in ≤ ~10 min |
+
+If scoring waits on HTTP, 10k–30k tickers will not finish in 10 minutes on free APIs.
+
+#### Rule 2: Prefer bulk over one-request-per-ticker
+
+| Method | Speed at 10k–30k | Notes |
+|--------|------------------|--------|
+| **Vendor flat files / bulk dump** (S3 zip, daily CSV of all symbols) | Fastest | One download for the whole market; best for scale |
+| **Paid API with grouped/aggregate or high rate limits** (e.g. Polygon-style) | Fast | Parallel workers + official limits |
+| **Per-ticker free API** (Yahoo via yfinance, etc.) | Slow | Fine for prototypes (50–500 names); painful at 10k+ |
+| **Web scraping** | Avoid | Fragile, ToS risk, often slower than APIs |
+
+**Practical path**
+
+1. **Prototype:** `yfinance` or similar for a few hundred tickers + local cache.
+2. **Serious / website:** paid provider with **daily bulk files** or high throughput. Budget for data; compute is cheap by comparison.
+3. Store as **Parquet** (columnar, compressed). Optional: one file per ticker *or* a partitioned dataset `data/raw/date=...` / `symbol=...`.
+
+#### Rule 3: Incremental updates after the first full history
+
+First run: download ~1–2 years history for the universe (hours; overnight OK).
+
+Every later night:
+
+1. Fetch **only the latest trading day** (or last few days) for all symbols.
+2. Append to existing Parquet (or rewrite the tail partition).
+3. Full re-backfill only on errors, splits gaps, or new listings.
+
+A full-history re-download every day is what makes systems feel “slow.”
+
+#### Rule 4: Parallelism with a rate limiter
+
+When you must use per-ticker HTTP:
+
+- Concurrent downloads (e.g. 8–32 workers), **but** honor provider rate limits.
+- Exponential backoff on 429/5xx; write failures to a retry queue.
+- Idempotent cache: if `data/raw/AAPL.parquet` is fresh for today, skip.
+
+Bulk flat files usually need **one** download + local unzip/parse — much simpler.
+
+#### Rule 5: Keep on disk what the score job needs
+
+Minimum columns: `date, open, high, low, close, volume, adj_close`.
+
+Optional staging layout:
+
+```
+data/raw/{SYMBOL}.parquet          # per ticker (simple)
+# or
+data/lake/ohlcv/symbol={SYM}/...   # partition for polars/spark later
+```
+
+Score job loads with **polars** or **pandas**; for 30k × ~500 rows, this is small data if local SSD.
+
+#### Provider cheat sheet (orientation, not endorsement)
+
+| Stage | Typical choice | Why |
+|-------|----------------|-----|
+| Learn / hack | Yahoo (`yfinance`), Stooq, etc. | Free, good enough for pipeline plumbing |
+| Scale ingest | Polygon, Tiingo, EODHD, Nasdaq Data Link, etc. | Bulk or higher limits; check current pricing |
+| Institutional | Dedicated flat-file vendors | Whole-market daily files; $$, very fast ingest |
+
+Always: API keys in env vars; check redistribution rights if the **website** shows charts/prices to paying users (vendor license often matters more than code).
+
 ### Procedure
 
-1. For each ticker, download (or load cached) daily OHLCV for the analysis window (e.g. 1–2 years).
-2. Normalize columns: `date`, `open`, `high`, `low`, `close`, `volume`, `adj_close`.
-3. Handle corporate actions via adjusted close where available.
-4. Cache raw data under `data/raw/{TICKER}.parquet` to avoid re-hitting APIs.
-5. Log failed tickers; continue the batch (do not fail the whole run).
+1. Resolve universe ticker list.
+2. **Bulk or batched** download (or load cache); do not block the score CLI on this.
+3. Normalize columns: `date`, `open`, `high`, `low`, `close`, `volume`, `adj_close`.
+4. Prefer **adjusted** close for returns when the vendor provides it.
+5. Cache under `data/raw/`; mark `as_of` date in a small `data/raw/_meta.json`.
+6. Log failed tickers; continue the batch (do not fail the whole run).
 
 ### Data quality checks
 
 - No gaps longer than X trading days without a note
 - Positive volume on most days
 - Prices > 0; OHLC consistency (`low ≤ open/close ≤ high`)
+
+### Speed checklist
+
+- [ ] Score path is **cache-only**
+- [ ] First backfill done once; nights are **incremental**
+- [ ] Format is **Parquet** (or equivalent), on fast local/cloud disk
+- [ ] Plots not generated for all 30k in the ingest path
+- [ ] Paid bulk feed planned before promising “30k in 10 minutes” as a product SLA
 
 ---
 
