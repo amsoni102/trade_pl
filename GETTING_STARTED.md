@@ -33,10 +33,17 @@ Outputs:
 
 ## 3. Start the local website
 
+From the repo root, with the virtualenv already installed (`pip install -e .`):
+
 ```bash
-python -m trade_pl.web.app
-# or: trade-pl-web
+make start    # pipeline (--universe-size 80) then site at http://127.0.0.1:8000
+make status
+make stop
 ```
+
+`make start` runs `python -m trade_pl.run --universe-size 80`, then starts the site in the background. Override with `make start UNIVERSE_SIZE=40`. Uses `.venv/bin/python` when present. Logs: `.run/pipeline.log`, `.run/web.log`.
+
+The same server alone is `python -m trade_pl.web.app` or `trade-pl-web`.
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000)
 

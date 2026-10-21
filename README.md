@@ -6,8 +6,8 @@ Procedure and architecture plan for screening hundreds of top-performing stocks,
 
 ```bash
 source .venv/bin/activate
-python -m trade_pl.run --universe-size 40    # ingest + score + plots
-python -m trade_pl.web.app                   # http://127.0.0.1:8000
+make start    # runs pipeline (--universe-size 80) then http://127.0.0.1:8000
+make stop
 ```
 
 ---
