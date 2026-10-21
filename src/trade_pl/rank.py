@@ -60,9 +60,11 @@ def _top_rows(df: pd.DataFrame, col: str, n: int = 25) -> list[dict[str, Any]]:
     cols = [
         "symbol",
         "sector",
+        "market",
         "rank",
         "score",
         col,
+        "return_1d",
         "return_1w",
         "return_1m",
         "return_3m",

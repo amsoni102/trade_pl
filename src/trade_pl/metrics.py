@@ -84,11 +84,13 @@ def summarize(
     max_dd = _max_drawdown(equity)
     avg_vol = float(series["volume"].tail(20).mean())
     last = series.iloc[-1]
+    return_1d = float(rets.iloc[-1]) if len(rets) else float("nan")
     return {
         "symbol": symbol,
         "sector": sector,
         "as_of": str(pd.Timestamp(series["date"].iloc[-1]).date()),
         "last_price": float(px.iloc[-1]),
+        "return_1d": return_1d,
         "return_1w": window_return(5),
         "return_1m": window_return(21),
         "return_3m": window_return(63),
@@ -114,6 +116,7 @@ def compute_for_symbol(
     metrics_dir: Path,
     min_history_days: int = 120,
     sector: str = "Unknown",
+    market: str = "Unknown",
 ) -> dict[str, Any] | None:
     path = raw_dir / f"{symbol.replace('/', '-')}.parquet"
     if not path.exists():
@@ -122,7 +125,10 @@ def compute_for_symbol(
     series = compute_series(df)
     metrics_dir.mkdir(parents=True, exist_ok=True)
     series.to_parquet(metrics_dir / f"{symbol}_series.parquet", index=False)
-    return summarize(symbol, series, min_history_days=min_history_days, sector=sector)
+    summary = summarize(symbol, series, min_history_days=min_history_days, sector=sector)
+    if summary is not None:
+        summary["market"] = market
+    return summary
 
 
 def compute_many(
@@ -133,22 +139,29 @@ def compute_many(
     min_price: float = 5.0,
     min_avg_volume: float = 500_000,
     sector_map: dict[str, str] | None = None,
+    market_map: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     sector_map = sector_map or {}
+    market_map = market_map or {}
     rows: list[dict[str, Any]] = []
     for sym in symbols:
+        market = market_map.get(sym, "Unknown")
+        # International listings often print in local currency / smaller share volume.
+        price_floor = min_price if market == "USA" else min(min_price, 1.0)
+        vol_floor = min_avg_volume if market == "USA" else min(min_avg_volume, 50_000)
         summary = compute_for_symbol(
             sym,
             raw_dir,
             metrics_dir,
             min_history_days,
             sector=sector_map.get(sym, "Unknown"),
+            market=market,
         )
         if not summary:
             continue
-        if summary["last_price"] < min_price:
+        if summary["last_price"] < price_floor:
             continue
-        if summary["avg_volume_20d"] < min_avg_volume:
+        if summary["avg_volume_20d"] < vol_floor:
             continue
         rows.append(summary)
     out = pd.DataFrame(rows)

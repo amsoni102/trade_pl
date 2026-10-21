@@ -1,10 +1,11 @@
 metrics_version: metrics_v1
 
-# Full curated multi-sector universe (~1000). Cap with --universe-size only for quick tests.
-universe_size: 1000
+# Full multi-market catalog (~1300: USA, Europe, Japan, China, Asia, …).
+# Cap with --universe-size / make start UNIVERSE_SIZE=N for quicker tests.
+universe_size: 1200
 lookback_days: 420
 min_price: 5.0
-min_avg_volume: 250000
+min_avg_volume: 100000
 min_history_days: 80
 
 # Ranking weights (must sum ~1.0)
@@ -21,9 +22,10 @@ enrich_top_k: 300
 horizon_top_n: 100
 sector_top_n: 50
 
-# Parallel downloads (Yahoo rate limits — raise carefully)
-ingest_workers: 10
-enrich_workers: 6
+# Parallel downloads — keep low. Yahoo shares one crumb; >4 workers → 401 Invalid Crumb.
+ingest_workers: 3
+ingest_min_interval: 0.4
+enrich_workers: 4
 
 paths:
   data_raw: data/raw

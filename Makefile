@@ -8,7 +8,7 @@
 ROOT          := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 HOST          := 127.0.0.1
 PORT          := 8000
-UNIVERSE_SIZE := 80
+UNIVERSE_SIZE := 400
 RUN_DIR       := $(ROOT)/.run
 PID           := $(RUN_DIR)/web.pid
 LOG           := $(RUN_DIR)/web.log
@@ -50,7 +50,7 @@ endef
 help:
 	@echo "trade_pl local website"
 	@echo ""
-	@echo "  make start     run pipeline (universe=$(UNIVERSE_SIZE)), then start site"
+	@echo "  make start     run pipeline (universe=$(UNIVERSE_SIZE); multi-market), then start site"
 	@echo "  make stop      stop the site"
 	@echo "  make status    show whether the site is running"
 	@echo "  make restart   stop, then start (re-runs pipeline)"

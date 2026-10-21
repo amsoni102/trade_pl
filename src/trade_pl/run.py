@@ -19,7 +19,13 @@ from trade_pl.rank import (
     write_sector_leaders,
     write_suggested_pick,
 )
-from trade_pl.universe import default_universe, load_universe_file, save_universe, sector_map_for
+from trade_pl.universe import (
+    default_universe,
+    load_universe_file,
+    market_map_for,
+    save_universe,
+    sector_map_for,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("trade_pl")
@@ -55,6 +61,8 @@ def _mirror_reports(ranked, report_dir: Path, latest: Path, cfg: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # yfinance logs every 404/delist as ERROR — drown the useful pipeline progress.
+    logging.getLogger("yfinance").setLevel(logging.CRITICAL)
     cfg = load_config(args.config)
     # ensure enrichment path exists
     enrich_path = cfg["paths"].get("data_enrichment")
@@ -91,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         tickers = default_universe(cfg["universe_size"])
 
     smap = sector_map_for(tickers)
+    mmap = market_map_for(tickers)
     save_universe(
         tickers,
         universes_dir,
@@ -99,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
             "min_price": cfg["min_price"],
             "min_avg_volume": cfg["min_avg_volume"],
             "sectors": sorted(set(smap.values())),
+            "markets": sorted(set(mmap.values())),
         },
     )
 
@@ -109,10 +119,17 @@ def main(argv: list[str] | None = None) -> int:
             tickers,
             raw_dir,
             lookback_days=cfg["lookback_days"],
-            workers=cfg.get("ingest_workers", 8),
+            workers=int(cfg.get("ingest_workers", 3)),
             force=args.force_ingest,
+            min_interval=float(cfg.get("ingest_min_interval", 0.4)),
         )
-        logger.info("Ingest ok=%s failed=%s", ingest_meta["ok"], len(ingest_meta["failed"]))
+        logger.info(
+            "Ingest ok=%s failed=%s saved=%s cached=%s",
+            ingest_meta["ok"],
+            len(ingest_meta["failed"]),
+            ingest_meta.get("saved"),
+            ingest_meta.get("cached"),
+        )
     else:
         logger.info("Using cache only (%s)", raw_dir)
 
@@ -132,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
         min_price=cfg["min_price"],
         min_avg_volume=cfg["min_avg_volume"],
         sector_map=smap,
+        market_map=mmap,
     )
     if summary.empty:
         logger.error("No symbols passed filters.")

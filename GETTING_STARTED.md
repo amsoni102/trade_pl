@@ -49,12 +49,20 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
 | Page | URL |
 |------|-----|
+| Floor (tape / gainers / losers / heat) | `/floor` |
 | Leaderboard + horizon cards | `/` |
 | Search by name or ticker | `/search?q=Siemens+Energy` |
 | Week / month / year leaders | `/horizons` |
 | Sector boards | `/sectors` |
 | Ticker detail (news, financials, dates, charts) | `/stock/AAPL` or `/stock/ENR.DE` |
 | Compare | `/compare?symbols=AAPL,MSFT,XOM` |
+
+### Universe size
+
+The curated catalog is **~1,300** liquid names across **USA, Europe, Japan, China, Asia, Canada, Australia, LatAm**, with **Technology ≈ 240** names.  
+`make start` defaults to `UNIVERSE_SIZE=400` (raise toward `1200` for the full board). A run of 80 looked like “only ~10 tech” because of round-robin sampling — not because Tech was tiny.
+
+If Yahoo prints `Invalid Crumb` / `possibly delisted`, the pipeline already retries auth errors slowly and **skips known-dead tickers**. Re-run `make start` — cached names are reused, so only missing symbols hit the network.
 
 ### Stock search (smart storage)
 
@@ -66,7 +74,7 @@ We do **not** store the whole market. Search works like this:
 
 ## Notes
 
-- Curated universe is **~1000** liquid names across 11 sectors.
+- Curated universe is multi-market (~1,300) across 11 sectors.
 - News / financials / calendar are fetched for **top names only** (configurable `enrich_top_k`) to stay within Yahoo rate limits.
-- Website only **reads** report artifacts; it does not re-download the market on each page view.
-- Rankings are research candidates, not financial advice.
+- Website mostly **reads** report artifacts; Floor auto-refreshes rankings from the latest board; search/detail can lazy-fetch profiles.
+- The Floor tape updates every 12s from `/api/floor`.

@@ -67,6 +67,61 @@ def _ts_to_iso(v: Any) -> str | None:
         return None
 
 
+def _fast_info_dict(ticker: Any) -> dict[str, Any]:
+    try:
+        fi = ticker.fast_info
+        if fi is None:
+            return {}
+        if isinstance(fi, dict):
+            return fi
+        return dict(fi)
+    except Exception:
+        return {}
+
+
+def _history_quote(ticker: Any, lookback_days: int = 420) -> dict[str, Any]:
+    """Price + short-horizon returns from OHLCV history (works when info is thin)."""
+    out: dict[str, Any] = {}
+    try:
+        hist = ticker.history(period="2y", auto_adjust=False, actions=False)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("history quote failed: %s", exc)
+        return out
+    if hist is None or hist.empty or "Close" not in hist.columns:
+        return out
+    close = hist["Close"].dropna()
+    if close.empty:
+        return out
+    last = float(close.iloc[-1])
+    out["last_price"] = last
+    if len(close) >= 2:
+        prev = float(close.iloc[-2])
+        out["previous_close"] = prev
+        out["return_1d"] = (last / prev - 1.0) if prev else None
+
+    def _ret(n: int) -> float | None:
+        if len(close) <= n:
+            return None
+        base = float(close.iloc[-n - 1])
+        return (last / base - 1.0) if base else None
+
+    out["return_1w"] = _ret(5)
+    out["return_1m"] = _ret(21)
+    out["return_3m"] = _ret(63)
+    out["return_6m"] = _ret(126)
+    out["return_1y"] = _ret(252)
+    if "Volume" in hist.columns and len(hist) >= 1:
+        out["volume"] = _safe_float(hist["Volume"].iloc[-1])
+        out["avg_volume_20d"] = _safe_float(hist["Volume"].tail(20).mean())
+    if "High" in hist.columns:
+        out["day_high"] = _safe_float(hist["High"].iloc[-1])
+    if "Low" in hist.columns:
+        out["day_low"] = _safe_float(hist["Low"].iloc[-1])
+    if "Open" in hist.columns:
+        out["open"] = _safe_float(hist["Open"].iloc[-1])
+    return out
+
+
 def fetch_profile(symbol: str) -> dict[str, Any]:
     from trade_pl.search import normalize_symbol
 
@@ -77,6 +132,8 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
         info = t.info or {}
     except Exception as exc:  # noqa: BLE001
         logger.warning("info failed %s: %s", symbol, exc)
+    fast = _fast_info_dict(t)
+    hist_q = _history_quote(t)
 
     news_raw = []
     try:
@@ -184,10 +241,37 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
     except Exception:
         pass
 
+    last_price = (
+        _safe_float(info.get("currentPrice"))
+        or _safe_float(info.get("regularMarketPrice"))
+        or _safe_float(fast.get("lastPrice"))
+        or _safe_float(fast.get("last_price"))
+        or hist_q.get("last_price")
+    )
+    prev_close = (
+        _safe_float(info.get("previousClose"))
+        or _safe_float(info.get("regularMarketPreviousClose"))
+        or _safe_float(fast.get("previousClose"))
+        or _safe_float(fast.get("regularMarketPreviousClose"))
+        or hist_q.get("previous_close")
+    )
+    day_chg = None
+    day_chg_pct = hist_q.get("return_1d")
+    if last_price is not None and prev_close not in (None, 0):
+        day_chg = last_price - float(prev_close)
+        day_chg_pct = day_chg / float(prev_close)
+
+    rec_raw = info.get("recommendationKey") or info.get("recommendationMean")
+    if isinstance(rec_raw, str) and rec_raw.strip().lower() in {"none", "nan", ""}:
+        rec_raw = None
+
+    currency = info.get("currency") or fast.get("currency") or "USD"
+    exchange = info.get("exchange") or fast.get("exchange") or info.get("fullExchangeName")
+
     profile = {
         "symbol": symbol,
         "as_of": date.today().isoformat(),
-        "name": info.get("shortName") or info.get("longName"),
+        "name": info.get("longName") or info.get("shortName") or fast.get("shortName"),
         "sector": info.get("sector"),
         "industry": info.get("industry"),
         "website": info.get("website"),
@@ -195,7 +279,25 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
         "employees": info.get("fullTimeEmployees"),
         "city": info.get("city"),
         "country": info.get("country"),
-        "market_cap": _safe_float(info.get("marketCap")),
+        "currency": currency,
+        "exchange": exchange,
+        "quote_type": info.get("quoteType") or fast.get("quoteType"),
+        "last_price": last_price,
+        "previous_close": prev_close,
+        "open": _safe_float(info.get("open")) or _safe_float(fast.get("open")) or hist_q.get("open"),
+        "day_high": _safe_float(info.get("dayHigh")) or _safe_float(fast.get("dayHigh")) or hist_q.get("day_high"),
+        "day_low": _safe_float(info.get("dayLow")) or _safe_float(fast.get("dayLow")) or hist_q.get("day_low"),
+        "volume": _safe_float(info.get("volume")) or _safe_float(fast.get("lastVolume")) or hist_q.get("volume"),
+        "avg_volume_20d": hist_q.get("avg_volume_20d") or _safe_float(info.get("averageVolume")),
+        "day_change": day_chg,
+        "day_change_pct": day_chg_pct,
+        "return_1d": hist_q.get("return_1d") if hist_q.get("return_1d") is not None else day_chg_pct,
+        "return_1w": hist_q.get("return_1w"),
+        "return_1m": hist_q.get("return_1m"),
+        "return_3m": hist_q.get("return_3m"),
+        "return_6m": hist_q.get("return_6m"),
+        "return_1y": hist_q.get("return_1y") or _safe_float(fast.get("yearChange")),
+        "market_cap": _safe_float(info.get("marketCap")) or _safe_float(fast.get("marketCap")),
         "enterprise_value": _safe_float(info.get("enterpriseValue")),
         "trailing_pe": _safe_float(info.get("trailingPE")),
         "forward_pe": _safe_float(info.get("forwardPE")),
@@ -208,10 +310,12 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
         "dividend_yield": _safe_float(info.get("dividendYield")),
         "payout_ratio": _safe_float(info.get("payoutRatio")),
         "beta": _safe_float(info.get("beta")),
-        "fifty_two_week_high": _safe_float(info.get("fiftyTwoWeekHigh")),
-        "fifty_two_week_low": _safe_float(info.get("fiftyTwoWeekLow")),
+        "fifty_two_week_high": _safe_float(info.get("fiftyTwoWeekHigh"))
+        or _safe_float(fast.get("yearHigh")),
+        "fifty_two_week_low": _safe_float(info.get("fiftyTwoWeekLow"))
+        or _safe_float(fast.get("yearLow")),
         "target_mean_price": _safe_float(info.get("targetMeanPrice")),
-        "recommendation": info.get("recommendationKey"),
+        "recommendation": rec_raw,
         "earnings_date": _ts_to_iso(info.get("earningsTimestamp"))
         or _ts_to_iso(info.get("earningsTimestampStart")),
         "ex_dividend_date": _ts_to_iso(info.get("exDividendDate")),
@@ -221,6 +325,17 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
         "financials": financials,
     }
     return profile
+
+
+def profile_needs_refresh(profile: dict[str, Any] | None) -> bool:
+    """True when cached profile is missing critical quote fields."""
+    if not profile:
+        return True
+    if profile.get("last_price") in (None, "", 0):
+        return True
+    if not (profile.get("news") or (profile.get("financials") or {}).get("income")):
+        return True
+    return False
 
 
 def enrich_many(

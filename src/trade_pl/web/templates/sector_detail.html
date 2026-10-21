@@ -2,39 +2,40 @@
 {% block title %}{{ sector }} · trade_pl{% endblock %}
 {% block content %}
   <div class="panel">
-    <div class="badge">sector</div>
+    <div class="badge">sector board</div>
     <h1 class="pick-symbol" style="font-size:1.8rem">{{ sector }}</h1>
     <p class="muted small">{{ rows|length }} names in latest leaderboard</p>
     {% if data and data.best_month %}
-    <p>Best this month:
-      {% for b in data.best_month[:3] %}
+    <p class="small" style="margin-top:0.5rem">
+      Best month:
+      {% for b in data.best_month[:5] %}
         <a class="sym" href="/stock/{{ b.symbol }}">{{ b.symbol }}</a> ({{ '%.1f'|format(b.return_1m * 100) }}%){% if not loop.last %}, {% endif %}
       {% endfor %}
     </p>
     {% endif %}
-  </div>
-  <div class="panel" style="margin-top:1rem">
-    <div style="overflow-x:auto">
+    <div style="overflow-x:auto;margin-top:1rem">
       <table>
         <thead>
           <tr>
-            <th># in sector</th><th>Overall</th><th>Symbol</th><th>Score</th><th>1W</th><th>1M</th><th>3M</th><th>6M</th><th>1Y</th><th>Sharpe</th><th>Price</th>
+            <th># in sector</th><th>Overall</th><th>Symbol</th><th>Score</th><th>1W</th><th>1M</th><th>3M</th><th>6M</th><th>1Y</th><th>Sharpe</th><th>Price</th><th>Signal</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
+          {% set sig = r|signal_row %}
           <tr>
             <td>{{ r.list_rank }}</td>
-            <td class="muted">{{ r.global_rank }}</td>
+            <td>{{ r.global_rank }}</td>
             <td><a class="sym" href="/stock/{{ r.symbol }}">{{ r.symbol }}</a></td>
             <td>{{ '%.3f'|format(r.score) }}</td>
-            <td>{{ '%.1f'|format(r.return_1w * 100) }}%</td>
-            <td>{{ '%.1f'|format(r.return_1m * 100) }}%</td>
-            <td>{{ '%.1f'|format(r.return_3m * 100) }}%</td>
-            <td>{{ '%.1f'|format(r.return_6m * 100) }}%</td>
-            <td>{{ '%.1f'|format(r.return_1y * 100) }}%</td>
+            <td class="{% if r.return_1w >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_1w * 100) }}%</td>
+            <td class="{% if r.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_1m * 100) }}%</td>
+            <td class="{% if r.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_3m * 100) }}%</td>
+            <td class="{% if r.return_6m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_6m * 100) }}%</td>
+            <td class="{% if r.return_1y >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_1y * 100) }}%</td>
             <td>{{ '%.2f'|format(r.sharpe_60d) }}</td>
-            <td>${{ '%.2f'|format(r.last_price) }}</td>
+            <td class="price-sharp">${{ r.last_price|price }}</td>
+            <td><span class="signal {{ sig.class }}">{{ sig.label }}</span></td>
           </tr>
           {% endfor %}
         </tbody>

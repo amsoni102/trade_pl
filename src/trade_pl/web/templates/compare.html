@@ -36,7 +36,7 @@
             <td>{{ '%.2f'|format(r.sharpe_60d) }}</td>
             <td class="neg">{{ '%.1f'|format(r.max_drawdown * 100) }}%</td>
             <td>{{ '%.0f'|format(r.rsi_14) }}</td>
-            <td>${{ '%.2f'|format(r.last_price) }}</td>
+            <td class="price-sharp">${{ r.last_price|price }}</td>
           </tr>
           {% endfor %}
         </tbody>

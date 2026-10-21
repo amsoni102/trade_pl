@@ -15,7 +15,9 @@ from fastapi.templating import Jinja2Templates
 from trade_pl.breaking_news import get_scanner
 from trade_pl.config import ROOT, load_config
 from trade_pl.enrichment import load_profile, save_profile
+from trade_pl.floor import build_floor
 from trade_pl.search import normalize_symbol, search_stocks
+from trade_pl.sectors import market_of
 
 WEB_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
@@ -88,7 +90,10 @@ def load_leaderboard() -> pd.DataFrame:
     path = _latest_dir() / "leaderboard.csv"
     if not path.exists():
         return pd.DataFrame()
-    return pd.read_csv(path)
+    df = pd.read_csv(path)
+    if not df.empty and "market" not in df.columns and "symbol" in df.columns:
+        df["market"] = df["symbol"].astype(str).map(market_of)
+    return df
 
 
 def load_pick() -> dict[str, Any] | None:
@@ -136,7 +141,108 @@ def _fmt_money(v: Any) -> str:
         return "—"
 
 
+def _fmt_price(v: Any) -> str:
+    try:
+        if v is None or (isinstance(v, float) and v != v):
+            return "—"
+        x = float(v)
+        if abs(x) >= 1000:
+            return f"{x:,.2f}"
+        if abs(x) >= 1:
+            return f"{x:.2f}"
+        return f"{x:.4f}"
+    except Exception:
+        return "—"
+
+
+def _signal_from_recommendation(rec: Any) -> dict[str, str]:
+    raw = str(rec or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if raw in {"", "none", "nan", "—", "-"}:
+        return {"label": "—", "class": "signal-none", "raw": ""}
+    mapping = {
+        "strong_buy": ("BUY", "signal-buy"),
+        "buy": ("BUY", "signal-buy"),
+        "overweight": ("BUY", "signal-buy"),
+        "outperform": ("BUY", "signal-buy"),
+        "hold": ("HOLD", "signal-hold"),
+        "neutral": ("HOLD", "signal-hold"),
+        "market_perform": ("HOLD", "signal-hold"),
+        "equal_weight": ("HOLD", "signal-hold"),
+        "underperform": ("SELL", "signal-sell"),
+        "underweight": ("SELL", "signal-sell"),
+        "sell": ("SELL", "signal-sell"),
+        "strong_sell": ("SELL", "signal-sell"),
+    }
+    if raw in mapping:
+        label, css = mapping[raw]
+        return {"label": label, "class": css, "raw": str(rec)}
+    return {"label": "—", "class": "signal-none", "raw": str(rec or "")}
+
+
+def _signal_from_row(row: dict[str, Any] | None) -> dict[str, str]:
+    """Fallback desk signal from model score / short return when no analyst rec."""
+    if not row:
+        return {"label": "—", "class": "signal-none", "raw": ""}
+    try:
+        score = float(row.get("score")) if row.get("score") is not None else None
+    except Exception:
+        score = None
+    try:
+        r1w = float(row.get("return_1w")) if row.get("return_1w") is not None else None
+    except Exception:
+        r1w = None
+    try:
+        r1d = float(row.get("return_1d")) if row.get("return_1d") is not None else None
+    except Exception:
+        r1d = None
+    if score is not None:
+        rw = r1w or 0.0
+        if score >= 0.72 or (score >= 0.6 and rw > 0.02):
+            return {"label": "BUY", "class": "signal-buy", "raw": "model"}
+        if score <= 0.35 or (score <= 0.45 and rw < -0.02):
+            return {"label": "SELL", "class": "signal-sell", "raw": "model"}
+        return {"label": "HOLD", "class": "signal-hold", "raw": "model"}
+    # Off-board: momentum from live returns
+    if r1w is not None:
+        if r1w > 0.03:
+            return {"label": "BUY", "class": "signal-buy", "raw": "momentum"}
+        if r1w < -0.03:
+            return {"label": "SELL", "class": "signal-sell", "raw": "momentum"}
+        return {"label": "HOLD", "class": "signal-hold", "raw": "momentum"}
+    if r1d is not None:
+        if r1d > 0.02:
+            return {"label": "BUY", "class": "signal-buy", "raw": "momentum"}
+        if r1d < -0.02:
+            return {"label": "SELL", "class": "signal-sell", "raw": "momentum"}
+        return {"label": "HOLD", "class": "signal-hold", "raw": "momentum"}
+    return {"label": "HOLD", "class": "signal-hold", "raw": "n/a"}
+
+
+def _ccy_symbol(code: Any) -> str:
+    return {
+        "USD": "$",
+        "EUR": "€",
+        "GBP": "£",
+        "JPY": "¥",
+        "CNY": "¥",
+        "HKD": "HK$",
+        "BRL": "R$",
+        "AUD": "A$",
+        "CAD": "C$",
+        "CHF": "CHF ",
+        "KRW": "₩",
+        "INR": "₹",
+        "TWD": "NT$",
+    }.get(str(code or "USD").upper(), f"{code} ")
+
+
+templates.env.filters["ccy"] = _ccy_symbol
+
+
 templates.env.filters["money"] = _fmt_money
+templates.env.filters["price"] = _fmt_price
+templates.env.filters["signal_rec"] = _signal_from_recommendation
+templates.env.filters["signal_row"] = _signal_from_row
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -296,6 +402,17 @@ def sector_detail(request: Request, sector: str) -> HTMLResponse:
     )
 
 
+@app.get("/floor", response_class=HTMLResponse)
+def floor_page(request: Request) -> HTMLResponse:
+    payload = build_floor(load_leaderboard(), n=18)
+    return templates.TemplateResponse(request, "floor.html", {"floor": payload})
+
+
+@app.get("/api/floor")
+def api_floor(n: int = Query(15, ge=5, le=40)) -> dict[str, Any]:
+    return build_floor(load_leaderboard(), n=n)
+
+
 @app.get("/search", response_class=HTMLResponse)
 def search_page(
     request: Request,
@@ -368,15 +485,40 @@ def stock_detail(
 
     enrich_dir = _paths()["enrichment"]
     profile = load_profile(enrich_dir, symbol)
-    # Lazy-fetch news/financials on first open (or ?refresh=1) so searched names still get detail.
-    if profile is None or refresh or not (profile.get("news") or profile.get("financials", {}).get("income")):
-        try:
-            from trade_pl.enrichment import fetch_profile
+    # Always ensure quote + financials for searched / off-board names.
+    from trade_pl.enrichment import fetch_profile, profile_needs_refresh
 
+    if refresh or profile_needs_refresh(profile):
+        try:
             profile = fetch_profile(symbol)
             save_profile(enrich_dir, profile)
         except Exception:
             profile = profile or None
+
+    # Synthesize a display row from profile when not on the scored leaderboard.
+    if row is None and profile:
+        row = {
+            "symbol": symbol,
+            "sector": profile.get("sector") or "Unknown",
+            "market": market_of(symbol),
+            "last_price": profile.get("last_price"),
+            "return_1d": profile.get("return_1d") or profile.get("day_change_pct"),
+            "return_1w": profile.get("return_1w"),
+            "return_1m": profile.get("return_1m"),
+            "return_3m": profile.get("return_3m"),
+            "return_6m": profile.get("return_6m"),
+            "return_1y": profile.get("return_1y"),
+            "score": None,
+            "rank": None,
+            "sharpe_60d": None,
+            "max_drawdown": None,
+            "on_board": False,
+        }
+    elif row is not None:
+        row = {**row, "on_board": True}
+        if profile and row.get("last_price") in (None, "") and profile.get("last_price") is not None:
+            row["last_price"] = profile["last_price"]
+
     return templates.TemplateResponse(
         request,
         "ticker.html",

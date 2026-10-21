@@ -6,11 +6,13 @@ Procedure and architecture plan for screening hundreds of top-performing stocks,
 
 ```bash
 source .venv/bin/activate
-make start    # runs pipeline (--universe-size 80) then http://127.0.0.1:8000
+make start    # pipeline (default 400 names, multi-market) then http://127.0.0.1:8000
 make stop
 ```
 
-Search any stock by name or ticker at `/search` (e.g. “Siemens Energy” → `ENR.DE`). Financials are fetched on demand and cached under `data/enrichment/` — the pipeline does not need to store the whole market.
+- **Floor** (`/floor`) — Wall Street–style tape, gainers/losers, volume, sector & market heat (auto-refresh).
+- **Search** (`/search`) — name or ticker (e.g. “Siemens Energy” → `ENR.DE`); financials cached on demand under `data/enrichment/`.
+- Universe catalog covers USA / Europe / Japan / China / Asia / Canada / Australia / LatAm (~1,300 names; Technology ≈ 240).
 
 ---
 

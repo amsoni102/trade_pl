@@ -5,7 +5,8 @@
     <div class="panel empty">
       <h2>No report yet</h2>
       <p class="muted">Run the pipeline first:</p>
-      <pre style="text-align:left;display:inline-block;background:#0003;padding:1rem;border-radius:8px">python -m trade_pl.run --universe-size 80</pre>
+      <pre style="text-align:left;display:inline-block;background:#0003;padding:1rem;border-radius:8px">make start
+# or: python -m trade_pl.run --universe-size 400</pre>
     </div>
   {% else %}
     <section class="breaking-panel panel news-home">
@@ -79,15 +80,23 @@
       <div class="panel">
         <div class="badge">model suggested candidate</div>
         <div class="pick-symbol">{{ pick.ticker if pick else "—" }}</div>
-        <p class="muted small">{{ pick.sector if pick and pick.sector else "" }} · {{ pick.disclaimer if pick else "" }}</p>
+        <p class="muted small">{{ pick.sector if pick and pick.sector else "" }}</p>
         {% if pick and pick.metric_breakdown %}
+        {% set psig = {"score": pick.score, "return_1w": pick.metric_breakdown.return_1w}|signal_row %}
+        <div class="price-hero" style="margin-top:0.6rem">
+          {% if pick.metric_breakdown.last_price is defined and pick.metric_breakdown.last_price %}
+          <div class="price-now"><span class="ccy">$</span>{{ pick.metric_breakdown.last_price|price }}</div>
+          {% endif %}
+          <span class="signal signal-lg {{ psig.class }}">{{ psig.label }}</span>
+          <div class="price-meta">score {{ '%.3f'|format(pick.score) }}</div>
+        </div>
         <div class="metrics">
           <div class="metric"><div class="label">Score</div><div class="value">{{ '%.3f'|format(pick.score) }}</div></div>
-          <div class="metric"><div class="label">1W</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_1w * 100) }}%</div></div>
-          <div class="metric"><div class="label">1M</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_1m * 100) }}%</div></div>
-          <div class="metric"><div class="label">3M</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_3m * 100) }}%</div></div>
-          <div class="metric"><div class="label">6M</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_6m * 100) }}%</div></div>
-          <div class="metric"><div class="label">1Y</div><div class="value">{{ '%.1f'|format(pick.metric_breakdown.return_1y * 100) }}%</div></div>
+          <div class="metric"><div class="label">1W</div><div class="value {% if pick.metric_breakdown.return_1w >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(pick.metric_breakdown.return_1w * 100) }}%</div></div>
+          <div class="metric"><div class="label">1M</div><div class="value {% if pick.metric_breakdown.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(pick.metric_breakdown.return_1m * 100) }}%</div></div>
+          <div class="metric"><div class="label">3M</div><div class="value {% if pick.metric_breakdown.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(pick.metric_breakdown.return_3m * 100) }}%</div></div>
+          <div class="metric"><div class="label">6M</div><div class="value {% if pick.metric_breakdown.return_6m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(pick.metric_breakdown.return_6m * 100) }}%</div></div>
+          <div class="metric"><div class="label">1Y</div><div class="value {% if pick.metric_breakdown.return_1y >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(pick.metric_breakdown.return_1y * 100) }}%</div></div>
         </div>
         <p style="margin-top:1rem"><a class="btn" href="/stock/{{ pick.ticker }}">Open detail →</a></p>
         {% endif %}
@@ -152,23 +161,26 @@
               <th>1Y</th>
               <th>Sharpe</th>
               <th>Price</th>
+              <th>Signal</th>
             </tr>
           </thead>
           <tbody>
             {% for r in rows %}
+            {% set sig = r|signal_row %}
             <tr>
               <td>{{ r.list_rank }}</td>
-              {% if sector %}<td class="muted">{{ r.global_rank }}</td>{% endif %}
+              {% if sector %}<td>{{ r.global_rank }}</td>{% endif %}
               <td><a class="sym" href="/stock/{{ r.symbol }}">{{ r.symbol }}</a></td>
               <td><a href="/sectors/{{ r.sector }}">{{ r.sector }}</a></td>
               <td>{{ '%.3f'|format(r.score) }}</td>
-              <td class="{% if r.return_1w >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_1w * 100) }}%</td>
-              <td class="{% if r.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_1m * 100) }}%</td>
-              <td class="{% if r.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_3m * 100) }}%</td>
-              <td class="{% if r.return_6m >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_6m * 100) }}%</td>
-              <td class="{% if r.return_1y >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(r.return_1y * 100) }}%</td>
+              <td class="{% if r.return_1w >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_1w * 100) }}%</td>
+              <td class="{% if r.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_1m * 100) }}%</td>
+              <td class="{% if r.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_3m * 100) }}%</td>
+              <td class="{% if r.return_6m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_6m * 100) }}%</td>
+              <td class="{% if r.return_1y >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(r.return_1y * 100) }}%</td>
               <td>{{ '%.2f'|format(r.sharpe_60d) }}</td>
-              <td>${{ '%.2f'|format(r.last_price) }}</td>
+              <td class="price-sharp">${{ r.last_price|price }}</td>
+              <td><span class="signal {{ sig.class }}">{{ sig.label }}</span></td>
             </tr>
             {% endfor %}
           </tbody>

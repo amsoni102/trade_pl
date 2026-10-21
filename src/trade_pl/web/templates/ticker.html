@@ -1,51 +1,160 @@
 {% extends "base.html" %}
 {% block title %}{{ symbol }} · trade_pl{% endblock %}
 {% block content %}
+  {% set price = row.last_price if row and row.last_price is not none else (profile.last_price if profile else none) %}
+  {% set ccy_code = (profile.currency if profile and profile.currency else "USD") %}
+  {% set ccy = ccy_code|ccy %}
+  {% set rec_sig = (profile.recommendation|signal_rec) if profile and profile.recommendation else none %}
+  {% set model_sig = row|signal_row if row else none %}
+  {% set sig = rec_sig if rec_sig and rec_sig.label != "—" else model_sig %}
   <div class="panel">
     <div class="badge">ticker detail</div>
     <h1 class="pick-symbol" style="font-size:2rem">{{ symbol }}</h1>
-    {% if profile and profile.name %}<p class="muted">{{ profile.name }}{% if profile.sector %} · {{ profile.sector }}{% endif %}{% if profile.industry %} · {{ profile.industry }}{% endif %}</p>{% endif %}
-    {% if not row %}
+    {% if profile and profile.name %}
+    <p class="muted">
+      {{ profile.name }}
+      {% if profile.sector %} · {{ profile.sector }}{% endif %}
+      {% if profile.industry %} · {{ profile.industry }}{% endif %}
+      {% if profile.exchange %} · {{ profile.exchange }}{% endif %}
+      · {{ ccy_code }}
+    </p>
+    {% endif %}
+
+    <div class="price-hero">
+      <div class="price-now"><span class="ccy">{{ ccy }}</span>{{ price|price }}</div>
+      {% if row and row.return_1d is not none %}
+      <div class="price-chg {% if row.return_1d >= 0 %}pos{% else %}neg{% endif %}">
+        {{ '%+.1f'|format(row.return_1d * 100) }}% 1D
+      </div>
+      {% elif profile and profile.day_change_pct is not none %}
+      <div class="price-chg {% if profile.day_change_pct >= 0 %}pos{% else %}neg{% endif %}">
+        {{ '%+.1f'|format(profile.day_change_pct * 100) }}% 1D
+      </div>
+      {% endif %}
+      {% if row and row.return_1w is not none %}
+      <div class="price-chg {% if row.return_1w >= 0 %}pos{% else %}neg{% endif %}">
+        {{ '%+.1f'|format(row.return_1w * 100) }}% 1W
+      </div>
+      {% endif %}
+      {% if sig and sig.label != "—" %}
+      <span class="signal signal-lg {{ sig.class }}">{{ sig.label }}</span>
+      {% endif %}
+      {% if profile and profile.previous_close is not none %}
+      <div class="price-meta">Prev {{ ccy }}{{ profile.previous_close|price }}</div>
+      {% endif %}
+      {% if profile and profile.target_mean_price %}
+      <div class="price-meta">Target {{ ccy }}{{ profile.target_mean_price|price }}</div>
+      {% endif %}
+    </div>
+
+    {% if row and not row.on_board %}
     <p class="muted small" style="margin-top:0.5rem">
-      Not in the latest leaderboard — financials below are loaded on demand from public market data
-      (and cached under <code>data/enrichment/</code> for next time).
+      Live quote + returns loaded on demand (not in the latest scored board).
       <a href="/search?q={{ symbol }}">Back to search</a>
     </p>
     {% endif %}
+
     {% if row %}
     <div class="metrics">
+      <div class="metric metric-price"><div class="label">Last price</div><div class="value">{{ ccy }}{{ row.last_price|price }}</div></div>
+      {% if sig and sig.label != "—" %}
+      <div class="metric metric-signal {{ sig.class }}"><div class="label">Signal</div><div class="value">{{ sig.label }}</div></div>
+      {% endif %}
+      {% if row.rank is not none %}
       <div class="metric"><div class="label">Rank</div><div class="value">#{{ row.rank }}</div></div>
+      {% endif %}
+      {% if row.score is not none %}
       <div class="metric"><div class="label">Score</div><div class="value">{{ '%.3f'|format(row.score) }}</div></div>
-      <div class="metric"><div class="label">Sector</div><div class="value" style="font-size:0.9rem"><a href="/sectors/{{ row.sector }}">{{ row.sector }}</a></div></div>
-      <div class="metric"><div class="label">1W</div><div class="value">{{ '%.1f'|format(row.return_1w * 100) }}%</div></div>
-      <div class="metric"><div class="label">1M</div><div class="value">{{ '%.1f'|format(row.return_1m * 100) }}%</div></div>
-      <div class="metric"><div class="label">3M</div><div class="value">{{ '%.1f'|format(row.return_3m * 100) }}%</div></div>
-      <div class="metric"><div class="label">6M</div><div class="value">{{ '%.1f'|format(row.return_6m * 100) }}%</div></div>
-      <div class="metric"><div class="label">1Y</div><div class="value">{{ '%.1f'|format(row.return_1y * 100) }}%</div></div>
+      {% endif %}
+      {% if row.sector %}
+      <div class="metric"><div class="label">Sector</div><div class="value" style="font-size:0.9rem">
+        {% if row.on_board %}<a href="/sectors/{{ row.sector }}">{{ row.sector }}</a>{% else %}{{ row.sector }}{% endif %}
+      </div></div>
+      {% endif %}
+      {% if row.return_1d is not none %}
+      <div class="metric"><div class="label">1D</div><div class="value {% if row.return_1d >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(row.return_1d * 100) }}%</div></div>
+      {% endif %}
+      {% if row.return_1w is not none %}
+      <div class="metric"><div class="label">1W</div><div class="value {% if row.return_1w >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(row.return_1w * 100) }}%</div></div>
+      {% endif %}
+      {% if row.return_1m is not none %}
+      <div class="metric"><div class="label">1M</div><div class="value {% if row.return_1m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(row.return_1m * 100) }}%</div></div>
+      {% endif %}
+      {% if row.return_3m is not none %}
+      <div class="metric"><div class="label">3M</div><div class="value {% if row.return_3m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(row.return_3m * 100) }}%</div></div>
+      {% endif %}
+      {% if row.return_6m is not none %}
+      <div class="metric"><div class="label">6M</div><div class="value {% if row.return_6m >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(row.return_6m * 100) }}%</div></div>
+      {% endif %}
+      {% if row.return_1y is not none %}
+      <div class="metric"><div class="label">1Y</div><div class="value {% if row.return_1y >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(row.return_1y * 100) }}%</div></div>
+      {% endif %}
+      {% if row.sharpe_60d is not none %}
       <div class="metric"><div class="label">Sharpe</div><div class="value">{{ '%.2f'|format(row.sharpe_60d) }}</div></div>
+      {% endif %}
+      {% if row.max_drawdown is not none %}
       <div class="metric"><div class="label">Max DD</div><div class="value neg">{{ '%.1f'|format(row.max_drawdown * 100) }}%</div></div>
-      <div class="metric"><div class="label">Price</div><div class="value">${{ '%.2f'|format(row.last_price) }}</div></div>
+      {% endif %}
     </div>
     {% endif %}
 
     {% if profile %}
     <div class="metrics" style="margin-top:1rem">
+      {% if profile.open is not none %}
+      <div class="metric"><div class="label">Open</div><div class="value price-sharp">{{ ccy }}{{ profile.open|price }}</div></div>
+      {% endif %}
+      {% if profile.day_high is not none %}
+      <div class="metric"><div class="label">Day high</div><div class="value price-sharp">{{ ccy }}{{ profile.day_high|price }}</div></div>
+      {% endif %}
+      {% if profile.day_low is not none %}
+      <div class="metric"><div class="label">Day low</div><div class="value price-sharp">{{ ccy }}{{ profile.day_low|price }}</div></div>
+      {% endif %}
+      {% if profile.volume is not none %}
+      <div class="metric"><div class="label">Volume</div><div class="value">{{ '%.0f'|format(profile.volume) }}</div></div>
+      {% endif %}
+      {% if profile.market_cap is not none %}
       <div class="metric"><div class="label">Market cap</div><div class="value">{{ profile.market_cap|money }}</div></div>
-      <div class="metric"><div class="label">Trailing P/E</div><div class="value">{% if profile.trailing_pe %}{{ '%.1f'|format(profile.trailing_pe) }}{% else %}—{% endif %}</div></div>
-      <div class="metric"><div class="label">Forward P/E</div><div class="value">{% if profile.forward_pe %}{{ '%.1f'|format(profile.forward_pe) }}{% else %}—{% endif %}</div></div>
-      <div class="metric"><div class="label">Rev growth</div><div class="value">{% if profile.revenue_growth %}{{ '%.1f'|format(profile.revenue_growth * 100) }}%{% else %}—{% endif %}</div></div>
-      <div class="metric"><div class="label">Profit margin</div><div class="value">{% if profile.profit_margins %}{{ '%.1f'|format(profile.profit_margins * 100) }}%{% else %}—{% endif %}</div></div>
-      <div class="metric"><div class="label">Dividend</div><div class="value">{% if profile.dividend_yield %}{{ '%.2f'|format(profile.dividend_yield * 100 if profile.dividend_yield < 1 else profile.dividend_yield) }}%{% else %}—{% endif %}</div></div>
-      <div class="metric"><div class="label">52w high</div><div class="value">{% if profile.fifty_two_week_high %}${{ '%.2f'|format(profile.fifty_two_week_high) }}{% else %}—{% endif %}</div></div>
-      <div class="metric"><div class="label">Target</div><div class="value">{% if profile.target_mean_price %}${{ '%.2f'|format(profile.target_mean_price) }}{% else %}—{% endif %}</div></div>
-      <div class="metric"><div class="label">Rec</div><div class="value" style="font-size:0.9rem">{{ profile.recommendation or "—" }}</div></div>
+      {% endif %}
+      {% if profile.trailing_pe is not none %}
+      <div class="metric"><div class="label">Trailing P/E</div><div class="value">{{ '%.1f'|format(profile.trailing_pe) }}</div></div>
+      {% endif %}
+      {% if profile.forward_pe is not none %}
+      <div class="metric"><div class="label">Forward P/E</div><div class="value">{{ '%.1f'|format(profile.forward_pe) }}</div></div>
+      {% endif %}
+      {% if profile.revenue_growth is not none %}
+      <div class="metric"><div class="label">Rev growth</div><div class="value {% if profile.revenue_growth >= 0 %}pos{% else %}neg{% endif %}">{{ '%+.1f'|format(profile.revenue_growth * 100) }}%</div></div>
+      {% endif %}
+      {% if profile.profit_margins is not none %}
+      <div class="metric"><div class="label">Profit margin</div><div class="value {% if profile.profit_margins >= 0 %}pos{% else %}neg{% endif %}">{{ '%.1f'|format(profile.profit_margins * 100) }}%</div></div>
+      {% endif %}
+      {% if profile.dividend_yield is not none %}
+      <div class="metric"><div class="label">Dividend</div><div class="value">{{ '%.2f'|format(profile.dividend_yield * 100 if profile.dividend_yield < 1 else profile.dividend_yield) }}%</div></div>
+      {% endif %}
+      {% if profile.fifty_two_week_high is not none %}
+      <div class="metric"><div class="label">52w high</div><div class="value price-sharp">{{ ccy }}{{ profile.fifty_two_week_high|price }}</div></div>
+      {% endif %}
+      {% if profile.fifty_two_week_low is not none %}
+      <div class="metric"><div class="label">52w low</div><div class="value price-sharp">{{ ccy }}{{ profile.fifty_two_week_low|price }}</div></div>
+      {% endif %}
+      {% if profile.target_mean_price is not none %}
+      <div class="metric metric-price"><div class="label">Target</div><div class="value">{{ ccy }}{{ profile.target_mean_price|price }}</div></div>
+      {% endif %}
+      {% set rsig = profile.recommendation|signal_rec %}
+      {% if rsig.label != "—" %}
+      <div class="metric metric-signal {{ rsig.class }}"><div class="label">Analyst</div><div class="value">{{ rsig.label }}</div></div>
+      {% endif %}
     </div>
 
+    {% if profile.earnings_date or profile.ex_dividend_date or profile.earnings_dates %}
     <div style="margin-top:1.2rem">
       <h2>Key dates</h2>
       <div class="metrics">
-        <div class="metric"><div class="label">Earnings</div><div class="value" style="font-size:0.95rem">{{ profile.earnings_date or "—" }}</div></div>
-        <div class="metric"><div class="label">Ex-dividend</div><div class="value" style="font-size:0.95rem">{{ profile.ex_dividend_date or "—" }}</div></div>
+        {% if profile.earnings_date %}
+        <div class="metric"><div class="label">Earnings</div><div class="value" style="font-size:0.95rem">{{ profile.earnings_date }}</div></div>
+        {% endif %}
+        {% if profile.ex_dividend_date %}
+        <div class="metric"><div class="label">Ex-dividend</div><div class="value" style="font-size:0.95rem">{{ profile.ex_dividend_date }}</div></div>
+        {% endif %}
       </div>
       {% if profile.earnings_dates %}
       <div style="overflow-x:auto;margin-top:0.75rem">
@@ -60,6 +169,7 @@
       </div>
       {% endif %}
     </div>
+    {% endif %}
 
     {% if profile.summary %}
     <div style="margin-top:1.2rem">
@@ -101,7 +211,9 @@
       <div style="overflow-x:auto">
         <table>
           <thead>
-            <tr><th>Period</th><th>Assets</th><th>Liabilities</th><th>Equity</th><th>Cash</th><th>Debt</th></tr>
+            <tr>
+              <th>Period</th><th>Assets</th><th>Liabilities</th><th>Equity</th><th>Cash</th><th>Debt</th>
+            </tr>
           </thead>
           <tbody>
             {% for rowf in profile.financials.balance %}
@@ -125,7 +237,11 @@
       <h2>Cash flow</h2>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Period</th><th>Operating CF</th><th>CapEx</th><th>Free CF</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Period</th><th>Operating CF</th><th>CapEx</th><th>Free CF</th>
+            </tr>
+          </thead>
           <tbody>
             {% for rowf in profile.financials.cashflow %}
             <tr>
@@ -165,10 +281,10 @@
       <div class="metrics">
         <div class="metric"><div class="label">Implied CAGR</div><div class="value">{{ '%.1f'|format(forecast.expected_cagr * 100) }}%</div></div>
         <div class="metric"><div class="label">Hist vol</div><div class="value">{{ '%.0f'|format(forecast.hist_vol_ann * 100) }}%</div></div>
-        <div class="metric"><div class="label">Median @ 5y</div><div class="value">${{ '%.2f'|format(forecast.projected_median_5y) }}</div></div>
+        <div class="metric"><div class="label">Median @ 5y</div><div class="value">{{ ccy }}{{ forecast.projected_median_5y|price }}</div></div>
         <div class="metric"><div class="label">Upside (median)</div><div class="value {% if forecast.upside_pct_median >= 0 %}pos{% else %}neg{% endif %}">{{ '%.0f'|format(forecast.upside_pct_median * 100) }}%</div></div>
-        <div class="metric"><div class="label">p10 @ 5y</div><div class="value">${{ '%.2f'|format(forecast.projected_p10_5y) }}</div></div>
-        <div class="metric"><div class="label">p90 @ 5y</div><div class="value">${{ '%.2f'|format(forecast.projected_p90_5y) }}</div></div>
+        <div class="metric"><div class="label">p10 @ 5y</div><div class="value">{{ ccy }}{{ forecast.projected_p10_5y|price }}</div></div>
+        <div class="metric"><div class="label">p90 @ 5y</div><div class="value">{{ ccy }}{{ forecast.projected_p90_5y|price }}</div></div>
       </div>
     </div>
     {% endif %}

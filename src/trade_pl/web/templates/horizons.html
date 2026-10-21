@@ -30,7 +30,7 @@
             <td class="pos">{{ '%.1f'|format(r[data.metric] * 100) }}%</td>
             <td>{{ '%.3f'|format(r.score) }}</td>
             <td>{{ r.rank }}</td>
-            <td>${{ '%.2f'|format(r.last_price) }}</td>
+            <td class="price-sharp">${{ r.last_price|price }}</td>
           </tr>
           {% endfor %}
         </tbody>
