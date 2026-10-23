@@ -303,21 +303,46 @@ class BreakingNewsScanner:
             it["noise"] = _is_noise(it)
             it["priority"] = _priority_score(it)
 
-        deduped = [x for x in _dedupe(items) if not x.get("noise")]
-        deduped.sort(
+        deduped = [
+            x
+            for x in _dedupe(items)
+            if not x.get("noise") and (not _is_stale(x, 96) or x.get("breaking"))
+        ]
+        # Prefer relevant+fresh: require ticker OR high-signal category OR breaking for the main desk
+        relevant = [
+            x
+            for x in deduped
+            if x.get("tickers")
+            or x.get("breaking")
+            or (x.get("category") in {"Earnings", "Fed / Macro", "M&A / Deals", "Markets", "Company news"})
+        ]
+        # If filter is too aggressive (cold start), fall back
+        pool = relevant if len(relevant) >= 40 else deduped
+        pool.sort(
             key=lambda x: (x.get("priority", 0), x.get("published_ts") or 0),
             reverse=True,
         )
-        top = deduped[:400]
+        top = pool[:400]
         groups = _group_items(top)
+
+        # Urgent = breaking OR very fresh (<6h) with tickers / earnings / macro
+        urgent = [
+            x
+            for x in top
+            if x.get("breaking")
+            or (
+                (x.get("published_ts") or 0) >= time.time() - 6 * 3600
+                and (x.get("tickers") or x.get("category") in {"Earnings", "Fed / Macro", "M&A / Deals"})
+            )
+        ][:60]
 
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "scanning": False,
             "items": top,
             "groups": groups,
-            "breaking": [x for x in top if x.get("breaking")][:60],
-            "with_tickers": [x for x in top if x.get("tickers")][:100],
+            "breaking": urgent,
+            "with_tickers": [x for x in top if x.get("tickers")][:120],
             "sources_ok": ok,
             "sources_failed": failed,
             "error": None,
@@ -326,6 +351,7 @@ class BreakingNewsScanner:
             "rss_configured": len(RSS_SOURCES),
             "topics_configured": len(TOPIC_QUERIES),
             "tickers_queried": len(ticker_slice),
+            "relevance": "ticker+fresh+category filter; stale >96h demoted",
         }
         with self._lock:
             self._state = payload
@@ -551,15 +577,34 @@ def _priority_score(item: dict[str, Any]) -> float:
     if item.get("breaking"):
         score += 5.0
     if item.get("tickers"):
-        score += 2.0 + min(2.0, 0.5 * len(item["tickers"]))
+        score += 3.0 + min(3.0, 0.75 * len(item["tickers"]))
     cat = item.get("category") or ""
     if cat in {"Earnings", "Fed / Macro", "M&A / Deals", "Markets"}:
-        score += 1.5
+        score += 2.0
+    if cat in {"Company news", "Tech / AI", "Energy", "Healthcare"}:
+        score += 1.0
     ts = item.get("published_ts") or 0
     if ts:
         age_h = max(0.0, (time.time() - ts) / 3600.0)
-        score += max(0.0, 3.0 - age_h)  # fresher = higher
+        # Strong freshness preference: last 6h >> last day >> older
+        if age_h <= 6:
+            score += 6.0 - age_h * 0.4
+        elif age_h <= 24:
+            score += 3.5 - (age_h - 6) * 0.1
+        elif age_h <= 72:
+            score += 1.5
+        else:
+            score -= min(4.0, (age_h - 72) / 24.0)  # stale penalty
+    else:
+        score -= 1.0
     return score
+
+
+def _is_stale(item: dict[str, Any], max_age_hours: float = 72.0) -> bool:
+    ts = item.get("published_ts") or 0
+    if not ts:
+        return False  # keep undated; still ranked lower
+    return (time.time() - ts) > max_age_hours * 3600
 
 
 def _group_items(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:

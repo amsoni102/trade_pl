@@ -646,3 +646,99 @@ tr:hover td { background: rgba(45, 212, 191, 0.05); }
   font-size: 1.02rem;
   font-weight: 700;
 }
+
+.calendar-home {
+  margin-bottom: 1.25rem;
+  border-color: rgba(45, 212, 191, 0.4);
+  color: #fff;
+  background:
+    linear-gradient(90deg, rgba(45, 212, 191, 0.1), transparent 45%),
+    linear-gradient(180deg, var(--bg-elev), var(--bg-soft));
+}
+.calendar-home a { color: #fff; }
+.calendar-home a:hover { color: var(--accent); }
+
+.imp-badge {
+  display: inline-block;
+  min-width: 1.8rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+  margin-right: 0.3rem;
+  color: #0b1220;
+  background: #fbbf24;
+  vertical-align: middle;
+}
+.imp-critical .imp-badge,
+tr.imp-critical .imp-badge {
+  background: #f87171;
+  color: #fff;
+}
+
+.event-table-wrap { overflow-x: auto; margin-top: 0.5rem; }
+.event-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #fff;
+  font-size: 0.9rem;
+}
+.event-table th,
+.event-table td {
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  vertical-align: top;
+}
+.event-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.7);
+}
+.event-table .sym {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--accent) !important;
+}
+
+.legend-box {
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.2);
+}
+
+.filings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+@media (max-width: 980px) {
+  .filings-grid { grid-template-columns: 1fr; }
+}
+
+.news-section { margin-top: 1.25rem; }
+.news-section h3 { color: #fff; margin: 0 0 0.5rem; }
+.news-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+}
+@media (max-width: 720px) {
+  .news-stats { grid-template-columns: repeat(2, 1fr); }
+}
+.news-stat {
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.22);
+}
+.news-stat .k { display: block; font-size: 0.72rem; color: rgba(255,255,255,0.65); }
+.news-stat .v { font-family: var(--mono); font-size: 1.25rem; font-weight: 700; color: #fff; }
+

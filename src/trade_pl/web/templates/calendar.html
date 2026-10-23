@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Event calendar · trade_pl{% endblock %}
+{% block content %}
+  <div class="panel breaking-panel">
+    <div class="breaking-head">
+      <div>
+        <span class="live-dot"></span>
+        <h2 style="display:inline;margin:0;color:#fff">Priority event calendar</h2>
+        <p class="news-meta">
+          Earnings, dividends, and official SEC filings ranked by importance so you can react fast.
+          {% if as_of %}· as of {{ as_of }}{% endif %}
+        </p>
+      </div>
+      <form method="post" action="/api/calendar/refresh" onsubmit="fetch(this.action,{method:'POST'}).then(()=>setTimeout(()=>location.reload(),4000)); return false;">
+        <button type="submit">Refresh filings + dates</button>
+      </form>
+    </div>
+
+    <div class="news-stats">
+      <div class="news-stat"><span class="k">Critical</span><span class="v">{{ critical|length }}</span></div>
+      <div class="news-stat"><span class="k">This week</span><span class="v">{{ this_week|length }}</span></div>
+      <div class="news-stat"><span class="k">Recent filings</span><span class="v">{{ filings_recent|length }}</span></div>
+      <div class="news-stat"><span class="k">Tracked</span><span class="v">{{ all_events|length }}</span></div>
+    </div>
+
+    <div class="legend-box">
+      <h3 style="color:#fff;margin:0 0 0.5rem">Importance scale</h3>
+      <ul class="breaking-list">
+        {% for L in legend %}
+        <li><strong>{{ L.level }}</strong> — {{ L.meaning }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <section class="news-section" id="critical">
+      <h3><span class="flash">ASAP</span> Critical now</h3>
+      {% if critical %}
+      <div class="event-table-wrap">
+        <table class="event-table">
+          <thead>
+            <tr><th>Score</th><th>When</th><th>Timing</th><th>Symbol</th><th>Event</th><th>Open</th></tr>
+          </thead>
+          <tbody>
+            {% for e in critical %}
+            <tr class="imp-critical">
+              <td><span class="imp-badge">{{ e.importance }}</span></td>
+              <td>{{ e.date }}</td>
+              <td>{{ e.timing }}</td>
+              <td><a class="sym" href="/stock/{{ e.symbol }}">{{ e.symbol }}</a></td>
+              <td>{{ e.title }}</td>
+              <td>{% if e.url %}<a href="{{ e.url }}" {% if e.url.startswith('http') %}target="_blank" rel="noopener"{% endif %}>link</a>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="news-meta">No critical items yet — run enrichment / refresh filings.</p>
+      {% endif %}
+    </section>
+
+    <section class="news-section" id="week">
+      <h3>This week</h3>
+      {% if this_week %}
+      <div class="event-table-wrap">
+        <table class="event-table">
+          <thead>
+            <tr><th>Score</th><th>When</th><th>Timing</th><th>Symbol</th><th>Event</th><th>Open</th></tr>
+          </thead>
+          <tbody>
+            {% for e in this_week %}
+            <tr>
+              <td><span class="imp-badge">{{ e.importance }}</span></td>
+              <td>{{ e.date }}</td>
+              <td>{{ e.timing }}</td>
+              <td><a class="sym" href="/stock/{{ e.symbol }}">{{ e.symbol }}</a></td>
+              <td>{{ e.title }}</td>
+              <td>{% if e.url %}<a href="{{ e.url }}" {% if e.url.startswith('http') %}target="_blank" rel="noopener"{% endif %}>link</a>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="news-meta">Nothing scheduled in the next 7 days from current cache.</p>
+      {% endif %}
+    </section>
+
+    <section class="news-section" id="filings">
+      <h3>Recent official filings (SEC)</h3>
+      {% if filings_recent %}
+      <div class="event-table-wrap">
+        <table class="event-table">
+          <thead>
+            <tr><th>Score</th><th>Filed</th><th>Symbol</th><th>Form</th><th>Document</th></tr>
+          </thead>
+          <tbody>
+            {% for e in filings_recent %}
+            <tr>
+              <td><span class="imp-badge">{{ e.importance }}</span></td>
+              <td>{{ e.date }}</td>
+              <td><a class="sym" href="/stock/{{ e.symbol }}">{{ e.symbol }}</a></td>
+              <td>{{ e.form or e.type }}</td>
+              <td>
+                {% if e.url %}<a href="{{ e.url }}" target="_blank" rel="noopener">PDF/doc</a>{% endif %}
+                {% if e.url_html and e.url_html != e.url %} · <a href="{{ e.url_html }}" target="_blank" rel="noopener">HTML</a>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="news-meta">Filings still loading — click refresh or open a ticker detail page.</p>
+      {% endif %}
+    </section>
+
+    <section class="news-section" id="all">
+      <h3>Full ranked list</h3>
+      <div class="event-table-wrap">
+        <table class="event-table">
+          <thead>
+            <tr><th>Score</th><th>Date</th><th>Type</th><th>Symbol</th><th>Event</th><th>Open</th></tr>
+          </thead>
+          <tbody>
+            {% for e in all_events[:80] %}
+            <tr>
+              <td><span class="imp-badge">{{ e.importance }}</span></td>
+              <td>{{ e.date }}</td>
+              <td>{{ e.type }}</td>
+              <td><a class="sym" href="/stock/{{ e.symbol }}">{{ e.symbol }}</a></td>
+              <td>{{ e.title }}</td>
+              <td>{% if e.url %}<a href="{{ e.url }}" {% if e.url.startswith('http') %}target="_blank" rel="noopener"{% endif %}>link</a>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+{% endblock %}

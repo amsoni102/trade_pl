@@ -31,6 +31,7 @@ def _paths() -> dict[str, Path]:
         "metrics": Path(cfg["paths"]["data_metrics"]),
         "enrichment": Path(cfg["paths"].get("data_enrichment", ROOT / "data" / "enrichment")),
         "search": Path(cfg["paths"].get("data_search", ROOT / "data" / "search")),
+        "filings": Path(cfg["paths"].get("data_filings", ROOT / "data" / "filings")),
     }
 
 
@@ -53,6 +54,32 @@ def _run_search(q: str, limit: int = 12) -> list[dict[str, Any]]:
     )
 
 
+def _refresh_filings_and_calendar(symbols: list[str]) -> None:
+    """Background: SEC filings for top names + rebuild priority event calendar."""
+    import threading
+
+    def _job() -> None:
+        try:
+            from trade_pl.events_calendar import build_calendar, write_calendar
+            from trade_pl.sec_filings import fetch_filings_many
+
+            paths = _paths()
+            filings_dir = paths["filings"]
+            enrich_dir = paths["enrichment"]
+            cik_cache = ROOT / "data" / "sec_cik_map.json"
+            # Official reports for a wide top set (SEC rate-limit friendly workers)
+            fetch_filings_many(symbols[:200], filings_dir, cik_cache, workers=3)
+            cal = build_calendar(enrich_dir, filings_dir, symbols=symbols[:400], limit=250)
+            write_calendar(cal, paths["reports"] / "latest" / "events_calendar.json")
+            write_calendar(cal, ROOT / "data" / "events_calendar.json")
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger("trade_pl").warning("filings/calendar refresh failed: %s", exc)
+
+    threading.Thread(target=_job, name="filings-calendar", daemon=True).start()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Keep scanning public finance RSS / news feeds for as long as the website is up.
@@ -65,6 +92,8 @@ async def lifespan(_app: FastAPI):
             universe = []
     scanner = get_scanner(cache_path=ROOT / "data" / "breaking_news.json", universe=universe)
     scanner.start()
+    if universe:
+        _refresh_filings_and_calendar(universe)
     yield
     scanner.stop()
 
@@ -301,6 +330,7 @@ def index(
         )
 
     news = get_scanner().snapshot()
+    cal = load_events_calendar()
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -328,6 +358,8 @@ def index(
             "news_updated_at": news.get("updated_at"),
             "news_scanning": news.get("scanning"),
             "news_sources_ok": news.get("sources_ok") or [],
+            "critical_events": (cal.get("critical") or [])[:8],
+            "week_events": (cal.get("this_week") or [])[:8],
         },
     )
 
@@ -349,6 +381,65 @@ def news_page(request: Request) -> HTMLResponse:
             "sources_failed": news.get("sources_failed") or [],
         },
     )
+
+
+def load_events_calendar() -> dict[str, Any]:
+    for path in (
+        _latest_dir() / "events_calendar.json",
+        ROOT / "data" / "events_calendar.json",
+    ):
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+    # Build on the fly from whatever enrichment/filings we already have
+    try:
+        from trade_pl.events_calendar import build_calendar, write_calendar
+
+        paths = _paths()
+        cal = build_calendar(paths["enrichment"], paths["filings"], limit=200)
+        write_calendar(cal, ROOT / "data" / "events_calendar.json")
+        return cal
+    except Exception:
+        return {"critical": [], "this_week": [], "filings_recent": [], "all": [], "legend": []}
+
+
+@app.get("/calendar", response_class=HTMLResponse)
+def calendar_page(request: Request) -> HTMLResponse:
+    cal = load_events_calendar()
+    return templates.TemplateResponse(
+        request,
+        "calendar.html",
+        {
+            "cal": cal,
+            "critical": cal.get("critical") or [],
+            "this_week": cal.get("this_week") or [],
+            "filings_recent": cal.get("filings_recent") or [],
+            "all_events": cal.get("all") or [],
+            "legend": cal.get("legend") or [],
+            "as_of": cal.get("as_of"),
+        },
+    )
+
+
+@app.get("/api/calendar")
+def api_calendar() -> dict[str, Any]:
+    return load_events_calendar()
+
+
+@app.post("/api/calendar/refresh")
+def api_calendar_refresh() -> dict[str, str]:
+    lb = _paths()["reports"] / "latest" / "leaderboard.csv"
+    symbols: list[str] = []
+    if lb.exists():
+        try:
+            symbols = pd.read_csv(lb)["symbol"].astype(str).head(500).tolist()
+        except Exception:
+            symbols = []
+    if symbols:
+        _refresh_filings_and_calendar(symbols)
+    return {"status": "refreshing"}
 
 
 @app.post("/api/breaking-news/refresh")
@@ -546,6 +637,25 @@ def stock_detail(
         ):
             row.setdefault(key, None)
 
+    # Official SEC filings (10-K / 10-Q / 8-K) — fetch on demand if missing
+    filings = None
+    try:
+        from trade_pl.sec_filings import (
+            fetch_filings_for_symbol,
+            load_filings,
+            load_ticker_cik_map,
+            save_filings,
+        )
+
+        filings_dir = _paths()["filings"]
+        filings = load_filings(filings_dir, symbol)
+        if refresh or filings is None or not (filings.get("filings") or filings.get("note")):
+            cik_map = load_ticker_cik_map(ROOT / "data" / "sec_cik_map.json")
+            filings = fetch_filings_for_symbol(symbol, cik_map)
+            save_filings(filings_dir, filings)
+    except Exception:
+        filings = filings or None
+
     return templates.TemplateResponse(
         request,
         "ticker.html",
@@ -556,6 +666,7 @@ def stock_detail(
             "has_chart": chart_path.exists(),
             "profile": profile,
             "forecast": forecast_summary,
+            "filings": filings,
         },
     )
 

@@ -9,6 +9,59 @@
 # or: python -m trade_pl.run --universe-size 400</pre>
     </div>
   {% else %}
+    {% if critical_events or week_events %}
+    <section class="panel calendar-home">
+      <div class="breaking-head">
+        <div>
+          <strong style="color:#fff;font-size:1.05rem">Important dates</strong>
+          <span class="news-meta">ranked by urgency · earnings &amp; filings</span>
+        </div>
+        <a class="news-link-all" href="/calendar">Full calendar →</a>
+      </div>
+      <div class="home-news-cols">
+        <div>
+          <h3 class="news-col-title"><span class="flash">ASAP</span> Critical</h3>
+          <ul class="breaking-list">
+            {% for e in critical_events[:5] %}
+            <li>
+              <span class="imp-badge">{{ e.importance }}</span>
+              <a class="sym" href="/stock/{{ e.symbol }}">{{ e.symbol }}</a>
+              {{ e.title }}
+              <div class="news-foot"><span>{{ e.date }}</span><span>{{ e.timing }}</span></div>
+            </li>
+            {% else %}
+            <li class="news-meta">None scored critical right now</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div>
+          <h3 class="news-col-title">This week</h3>
+          <ul class="breaking-list">
+            {% for e in week_events[:5] %}
+            <li>
+              <span class="imp-badge">{{ e.importance }}</span>
+              <a class="sym" href="/stock/{{ e.symbol }}">{{ e.symbol }}</a>
+              {{ e.title }}
+              <div class="news-foot"><span>{{ e.date }}</span></div>
+            </li>
+            {% else %}
+            <li class="news-meta">No events in the next 7 days</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div>
+          <h3 class="news-col-title">How to read scores</h3>
+          <ul class="breaking-list">
+            <li><strong>90–100</strong> — earnings today / tomorrow / this week</li>
+            <li><strong>75–89</strong> — fresh 10-K / 10-Q / 8-K</li>
+            <li><strong>55–74</strong> — ex-div, later this month</li>
+            <li><a href="/calendar">Open prioritized calendar →</a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
     <section class="breaking-panel panel news-home">
       <div class="breaking-head">
         <div>

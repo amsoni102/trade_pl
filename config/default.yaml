@@ -34,6 +34,8 @@ paths:
   data_enrichment: data/enrichment
   # Short-lived Yahoo name→ticker query cache (not full market data)
   data_search: data/search
+  # Official SEC EDGAR 10-K / 10-Q / 8-K links (PDF/HTML)
+  data_filings: data/filings
   plots: plots
   reports: reports
   universes: universes

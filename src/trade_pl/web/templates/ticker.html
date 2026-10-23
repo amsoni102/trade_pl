@@ -149,10 +149,10 @@
 
     {% if profile.earnings_date or profile.ex_dividend_date or profile.earnings_dates %}
     <div style="margin-top:1.2rem">
-      <h2>Key dates</h2>
+      <h2>Key dates <a class="muted small" href="/calendar">· calendar</a></h2>
       <div class="metrics">
         {% if profile.earnings_date %}
-        <div class="metric"><div class="label">Earnings</div><div class="value" style="font-size:0.95rem">{{ profile.earnings_date }}</div></div>
+        <div class="metric metric-signal signal-buy"><div class="label">Next earnings</div><div class="value" style="font-size:0.95rem">{{ profile.earnings_date }}</div></div>
         {% endif %}
         {% if profile.ex_dividend_date %}
         <div class="metric"><div class="label">Ex-dividend</div><div class="value" style="font-size:0.95rem">{{ profile.ex_dividend_date }}</div></div>
@@ -173,10 +173,78 @@
     </div>
     {% endif %}
 
+    <div style="margin-top:1.2rem" id="sec-filings">
+      <h2>Official SEC reports</h2>
+      <p class="muted small">10-K annual, 10-Q quarterly, 8-K material events — links to SEC EDGAR (PDF when available).</p>
+      {% if filings and filings.filings %}
+      {% if filings.cik %}
+      <p class="muted small">CIK {{ filings.cik }} · <a href="https://www.sec.gov/edgar/browse/?CIK={{ filings.cik }}" target="_blank" rel="noopener">SEC company page</a></p>
+      {% endif %}
+      <div class="filings-grid">
+        {% if filings.annual %}
+        <div>
+          <h3 class="news-col-title">Annual (10-K / 20-F)</h3>
+          <ul class="breaking-list">
+            {% for f in filings.annual[:4] %}
+            <li>
+              <span class="imp-badge">{{ f.importance }}</span>
+              <strong>{{ f.form }}</strong> · {{ f.filing_date }}
+              <div class="news-foot">
+                <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF/doc</a>
+                {% if f.url_html %}<a href="{{ f.url_html }}" target="_blank" rel="noopener">HTML</a>{% endif %}
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        {% if filings.quarterly %}
+        <div>
+          <h3 class="news-col-title">Quarterly (10-Q)</h3>
+          <ul class="breaking-list">
+            {% for f in filings.quarterly[:6] %}
+            <li>
+              <span class="imp-badge">{{ f.importance }}</span>
+              <strong>{{ f.form }}</strong> · {{ f.filing_date }}
+              <div class="news-foot">
+                <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF/doc</a>
+                {% if f.url_html %}<a href="{{ f.url_html }}" target="_blank" rel="noopener">HTML</a>{% endif %}
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        {% if filings.material %}
+        <div>
+          <h3 class="news-col-title">Material (8-K / 6-K)</h3>
+          <ul class="breaking-list">
+            {% for f in filings.material[:6] %}
+            <li>
+              <span class="imp-badge">{{ f.importance }}</span>
+              <strong>{{ f.form }}</strong> · {{ f.filing_date }}
+              {% if f.description %}<div class="muted small">{{ f.description }}</div>{% endif %}
+              <div class="news-foot">
+                <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF/doc</a>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+      {% elif filings and filings.note %}
+      <p class="muted">{{ filings.note }}</p>
+      {% else %}
+      <p class="muted">Loading SEC filings… reopen with <code>?refresh=1</code> if empty, or wait for background refresh.</p>
+      {% endif %}
+    </div>
+
     {% if profile.summary %}
     <div style="margin-top:1.2rem">
-      <h2>Business</h2>
-      <p class="muted small" style="white-space:pre-wrap;max-height:160px;overflow:auto">{{ profile.summary }}</p>
+      <h2>Business &amp; plans</h2>
+      <p class="muted small" style="white-space:pre-wrap;max-height:220px;overflow:auto">{{ profile.summary }}</p>
+      <p class="muted small">Official strategy / guidance detail is in the latest 10-K Item 1 (Business) and 8-K earnings releases above.</p>
     </div>
     {% endif %}
 
