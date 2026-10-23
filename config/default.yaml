@@ -17,7 +17,8 @@ weights:
   liquidity: 0.10
 
 # Top lists: large enough for a real research board
-plot_top_k: 150
+# Ensure every top-tier name gets dashboard + drawdown + 5y forecast plots
+plot_top_k: 300
 enrich_top_k: 300
 horizon_top_n: 100
 sector_top_n: 50

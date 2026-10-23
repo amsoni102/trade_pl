@@ -22,18 +22,20 @@
 
     <div class="price-hero">
       <div class="price-now"><span class="ccy">{{ ccy }}</span>{{ price|price }}</div>
-      {% if row and row.return_1d is not none %}
-      <div class="price-chg {% if row.return_1d >= 0 %}pos{% else %}neg{% endif %}">
-        {{ '%+.1f'|format(row.return_1d * 100) }}% 1D
+      {% set r1d = row.get('return_1d') if row else none %}
+      {% set r1w = row.get('return_1w') if row else none %}
+      {% if r1d is not none %}
+      <div class="price-chg {% if r1d >= 0 %}pos{% else %}neg{% endif %}">
+        {{ '%+.1f'|format(r1d * 100) }}% 1D
       </div>
       {% elif profile and profile.day_change_pct is not none %}
       <div class="price-chg {% if profile.day_change_pct >= 0 %}pos{% else %}neg{% endif %}">
         {{ '%+.1f'|format(profile.day_change_pct * 100) }}% 1D
       </div>
       {% endif %}
-      {% if row and row.return_1w is not none %}
-      <div class="price-chg {% if row.return_1w >= 0 %}pos{% else %}neg{% endif %}">
-        {{ '%+.1f'|format(row.return_1w * 100) }}% 1W
+      {% if r1w is not none %}
+      <div class="price-chg {% if r1w >= 0 %}pos{% else %}neg{% endif %}">
+        {{ '%+.1f'|format(r1w * 100) }}% 1W
       </div>
       {% endif %}
       {% if sig and sig.label != "—" %}

@@ -17,38 +17,77 @@ logger = logging.getLogger(__name__)
 
 # Public RSS endpoints designed for syndication (stable vs scraping HTML).
 RSS_SOURCES: list[dict[str, str]] = [
-    {
-        "name": "Yahoo Finance",
-        "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US",
-    },
-    {
-        "name": "CNBC Top News",
-        "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-    },
-    {
-        "name": "CNBC Markets",
-        "url": "https://www.cnbc.com/id/15839069/device/rss/rss.html",
-    },
-    {
-        "name": "MarketWatch Top",
-        "url": "https://feeds.marketwatch.com/marketwatch/topstories/",
-    },
-    {
-        "name": "MarketWatch Markets",
-        "url": "https://feeds.marketwatch.com/marketwatch/marketpulse/",
-    },
-    {
-        "name": "Reuters Business",
-        "url": "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best",
-    },
-    {
-        "name": "BBC Business",
-        "url": "https://feeds.bbci.co.uk/news/business/rss.xml",
-    },
-    {
-        "name": "Nasdaq News",
-        "url": "https://www.nasdaq.com/feed/rssoutbound?category=Stocks",
-    },
+    # Broad market
+    {"name": "Yahoo · S&P 500", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US"},
+    {"name": "Yahoo · Nasdaq", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EIXIC&region=US&lang=en-US"},
+    {"name": "Yahoo · Dow", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EDJI&region=US&lang=en-US"},
+    {"name": "Yahoo · Russell 2000", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5ERUT&region=US&lang=en-US"},
+    {"name": "Yahoo · Oil", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=CL%3DF&region=US&lang=en-US"},
+    {"name": "Yahoo · Gold", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GC%3DF&region=US&lang=en-US"},
+    {"name": "Yahoo · Treasury", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5ETNX&region=US&lang=en-US"},
+    # Mega-cap / sector proxies
+    {"name": "Yahoo · AAPL", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US"},
+    {"name": "Yahoo · MSFT", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=MSFT&region=US&lang=en-US"},
+    {"name": "Yahoo · NVDA", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA&region=US&lang=en-US"},
+    {"name": "Yahoo · TSLA", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=TSLA&region=US&lang=en-US"},
+    {"name": "Yahoo · AMZN", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AMZN&region=US&lang=en-US"},
+    {"name": "Yahoo · META", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=META&region=US&lang=en-US"},
+    {"name": "Yahoo · GOOGL", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GOOGL&region=US&lang=en-US"},
+    {"name": "Yahoo · XOM", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=XOM&region=US&lang=en-US"},
+    {"name": "Yahoo · JPM", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=JPM&region=US&lang=en-US"},
+    {"name": "Yahoo · LLY", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=LLY&region=US&lang=en-US"},
+    # CNBC
+    {"name": "CNBC Top News", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
+    {"name": "CNBC Markets", "url": "https://www.cnbc.com/id/15839069/device/rss/rss.html"},
+    {"name": "CNBC Finance", "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html"},
+    {"name": "CNBC Tech", "url": "https://www.cnbc.com/id/19854910/device/rss/rss.html"},
+    {"name": "CNBC Energy", "url": "https://www.cnbc.com/id/19836768/device/rss/rss.html"},
+    {"name": "CNBC Health Care", "url": "https://www.cnbc.com/id/10000108/device/rss/rss.html"},
+    {"name": "CNBC Earnings", "url": "https://www.cnbc.com/id/15839135/device/rss/rss.html"},
+    {"name": "CNBC Investing", "url": "https://www.cnbc.com/id/15839069/device/rss/rss.html"},
+    # MarketWatch / Nasdaq / BBC
+    {"name": "MarketWatch Top", "url": "https://feeds.marketwatch.com/marketwatch/topstories/"},
+    {"name": "MarketWatch Markets", "url": "https://feeds.marketwatch.com/marketwatch/marketpulse/"},
+    {"name": "MarketWatch Breaking", "url": "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/"},
+    {"name": "MarketWatch Bulletins", "url": "https://feeds.marketwatch.com/marketwatch/bulletins/"},
+    {"name": "Nasdaq Stocks", "url": "https://www.nasdaq.com/feed/rssoutbound?category=Stocks"},
+    {"name": "Nasdaq Markets", "url": "https://www.nasdaq.com/feed/rssoutbound?category=Markets"},
+    {"name": "Nasdaq Cryptocurrency", "url": "https://www.nasdaq.com/feed/rssoutbound?category=Cryptocurrencies"},
+    {"name": "BBC Business", "url": "https://feeds.bbci.co.uk/news/business/rss.xml"},
+    {"name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
+    {"name": "Guardian Business", "url": "https://www.theguardian.com/uk/business/rss"},
+    {"name": "Guardian Markets", "url": "https://www.theguardian.com/business/stock-markets/rss"},
+    {"name": "Reuters Business", "url": "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best"},
+    {"name": "Investing.com", "url": "https://www.investing.com/rss/news.rss"},
+    {"name": "Investing.com Stock", "url": "https://www.investing.com/rss/news_25.rss"},
+    {"name": "Investing.com Economy", "url": "https://www.investing.com/rss/news_95.rss"},
+    {"name": "Investing.com Commodities", "url": "https://www.investing.com/rss/news_11.rss"},
+    {"name": "Fed Press", "url": "https://www.federalreserve.gov/feeds/press_all.xml"},
+    {"name": "SEC Press", "url": "https://www.sec.gov/news/pressreleases.rss"},
+]
+
+# Topic queries via Yahoo search API (broader than ticker-only).
+TOPIC_QUERIES: list[str] = [
+    "stock market",
+    "Federal Reserve",
+    "interest rates",
+    "inflation CPI",
+    "earnings season",
+    "oil prices",
+    "semiconductor chips",
+    "AI stocks",
+    "bank stocks",
+    "merger acquisition",
+    "IPO",
+    "treasury yields",
+    "recession",
+    "China stocks",
+    "Europe markets",
+    "biotech FDA",
+    "electric vehicles",
+    "cryptocurrency bitcoin",
+    "housing market",
+    "consumer spending",
 ]
 
 TICKER_RE = re.compile(r"\b([A-Z]{1,5})(?:\s|\.|'s|/|,|:|$)", re.ASCII)
@@ -127,6 +166,8 @@ class BreakingNewsScanner:
             self._stop.wait(self.refresh_seconds)
 
     def refresh_once(self) -> dict[str, Any]:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         with self._lock:
             self._state["scanning"] = True
             self._state["error"] = None
@@ -135,21 +176,45 @@ class BreakingNewsScanner:
         ok: list[str] = []
         failed: list[str] = []
 
-        for src in RSS_SOURCES:
+        def _rss_job(src: dict[str, str]) -> tuple[str, list[dict[str, Any]] | None, str | None]:
             try:
-                fetched = _fetch_rss(src["url"], src["name"], limit=12)
-                items.extend(fetched)
-                ok.append(src["name"])
+                return src["name"], _fetch_rss(src["url"], src["name"], limit=18), None
             except Exception as exc:  # noqa: BLE001
-                failed.append(f"{src['name']}: {exc}")
-                logger.debug("RSS fail %s: %s", src["name"], exc)
+                return src["name"], None, str(exc)
 
-        # Extra Yahoo headlines for top universe names (if available)
-        for sym in list(self.universe)[:25]:
+        def _yahoo_job(query: str, limit: int, label: str) -> tuple[str, list[dict[str, Any]] | None, str | None]:
             try:
-                items.extend(_fetch_yahoo_search_news(sym, limit=3))
-            except Exception:
-                continue
+                return label, _fetch_yahoo_search_news(query, limit=limit, source_label=label), None
+            except Exception as exc:  # noqa: BLE001
+                return label, None, str(exc)
+
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            futs = [pool.submit(_rss_job, src) for src in RSS_SOURCES]
+            for topic in TOPIC_QUERIES:
+                futs.append(pool.submit(_yahoo_job, topic, 6, f"Yahoo · {topic}"))
+            ticker_slice = list(self.universe)[:120]
+            for sym in ticker_slice:
+                futs.append(pool.submit(_yahoo_job, sym, 4, f"Yahoo · {sym}"))
+
+            topic_ok = False
+            ticker_ok = 0
+            for fut in as_completed(futs):
+                name, fetched, err = fut.result()
+                if err or fetched is None:
+                    failed.append(f"{name}: {err}")
+                    continue
+                items.extend(fetched)
+                if name.startswith("Yahoo · ") and name.split(" · ", 1)[-1] in TOPIC_QUERIES:
+                    topic_ok = True
+                elif name.startswith("Yahoo · ") and name.split(" · ", 1)[-1] in self.universe:
+                    ticker_ok += 1
+                elif not name.startswith("Yahoo · "):
+                    ok.append(name)
+
+        if topic_ok:
+            ok.append("Yahoo topics")
+        if ticker_ok:
+            ok.append(f"Yahoo tickers ({ticker_ok})")
 
         for it in items:
             it["tickers"] = _match_tickers(it.get("title", ""), self.universe)
@@ -163,7 +228,7 @@ class BreakingNewsScanner:
             key=lambda x: (x.get("priority", 0), x.get("published_ts") or 0),
             reverse=True,
         )
-        top = deduped[:100]
+        top = deduped[:220]
         groups = _group_items(top)
 
         payload = {
@@ -171,12 +236,13 @@ class BreakingNewsScanner:
             "scanning": False,
             "items": top,
             "groups": groups,
-            "breaking": [x for x in top if x.get("breaking")][:20],
-            "with_tickers": [x for x in top if x.get("tickers")][:30],
+            "breaking": [x for x in top if x.get("breaking")][:40],
+            "with_tickers": [x for x in top if x.get("tickers")][:60],
             "sources_ok": ok,
             "sources_failed": failed,
             "error": None,
             "count": len(top),
+            "raw_fetched": len(items),
         }
         with self._lock:
             self._state = payload
@@ -247,13 +313,20 @@ def _fetch_rss(url: str, source: str, limit: int = 12) -> list[dict[str, Any]]:
     return items
 
 
-def _fetch_yahoo_search_news(symbol: str, limit: int = 3) -> list[dict[str, Any]]:
+def _fetch_yahoo_search_news(
+    query: str,
+    limit: int = 3,
+    source_label: str | None = None,
+) -> list[dict[str, Any]]:
+    from urllib.parse import quote_plus
+
     url = (
         "https://query1.finance.yahoo.com/v1/finance/search?"
-        f"q={symbol}&quotesCount=0&newsCount={limit}"
+        f"q={quote_plus(query)}&quotesCount=0&newsCount={limit}"
     )
     data = json.loads(_http_get(url).decode("utf-8", errors="ignore"))
     out: list[dict[str, Any]] = []
+    label = source_label or f"Yahoo · {query}"
     for n in data.get("news") or []:
         title = n.get("title")
         if not title:
@@ -266,7 +339,7 @@ def _fetch_yahoo_search_news(symbol: str, limit: int = 3) -> list[dict[str, Any]
             _item(
                 title,
                 n.get("link") or "",
-                n.get("publisher") or f"Yahoo · {symbol}",
+                n.get("publisher") or label,
                 published,
                 ts,
             )

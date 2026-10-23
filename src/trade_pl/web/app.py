@@ -322,7 +322,7 @@ def index(
             "sort_options": sort_options,
             "horizon_cards": horizon_cards,
             "sector_names": sorted((sectors_payload.get("sectors") or {}).keys()),
-            "breaking_news": (news.get("items") or [])[:12],
+            "breaking_news": (news.get("items") or [])[:18],
             "news_urgent": news.get("breaking") or [],
             "news_tickers": news.get("with_tickers") or [],
             "news_updated_at": news.get("updated_at"),
@@ -465,14 +465,22 @@ def stock_detail(
     metrics_dir = _paths()["metrics"]
     chart_path = plots_dir / symbol / f"{chart}.html"
 
-    # Lazy-build 5y forecast chart on first open if missing
-    if chart == "forecast" and not chart_path.exists():
+    # Lazy-build full chart pack (dashboard / drawdown / 5y forecast) if any are missing
+    needed = ("dashboard.html", "drawdown.html", "forecast.html")
+    if refresh or any(not (plots_dir / symbol / name).exists() for name in needed):
         try:
-            from trade_pl.forecast import forecast_symbol
+            from trade_pl.plots import plot_symbol
 
-            forecast_symbol(symbol, metrics_dir, plots_dir)
+            plot_symbol(symbol, metrics_dir, plots_dir)
         except Exception:
-            pass
+            # Fall back to forecast-only if full pack fails
+            if chart == "forecast" and not chart_path.exists():
+                try:
+                    from trade_pl.forecast import forecast_symbol
+
+                    forecast_symbol(symbol, metrics_dir, plots_dir)
+                except Exception:
+                    pass
         chart_path = plots_dir / symbol / f"{chart}.html"
 
     forecast_summary = None
@@ -518,6 +526,25 @@ def stock_detail(
         row = {**row, "on_board": True}
         if profile and row.get("last_price") in (None, "") and profile.get("last_price") is not None:
             row["last_price"] = profile["last_price"]
+
+    # Ensure optional metric keys exist so Jinja attr access never blows up
+    if row is not None:
+        for key in (
+            "return_1d",
+            "return_1w",
+            "return_1m",
+            "return_3m",
+            "return_6m",
+            "return_1y",
+            "sharpe_60d",
+            "max_drawdown",
+            "score",
+            "rank",
+            "sector",
+            "last_price",
+            "on_board",
+        ):
+            row.setdefault(key, None)
 
     return templates.TemplateResponse(
         request,
