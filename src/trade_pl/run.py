@@ -161,9 +161,14 @@ def main(argv: list[str] | None = None) -> int:
 
     plotted: list[str] = []
     if not args.skip_plots:
-        top_k = int(cfg.get("plot_top_k", 40))
-        top_syms = ranked["symbol"].head(top_k).tolist()
-        logger.info("Plotting top %d…", len(top_syms))
+        # 0 / null = plot every scored symbol (full history board)
+        raw_k = cfg.get("plot_top_k", 40)
+        top_k = 0 if raw_k is None else int(raw_k)
+        if top_k <= 0:
+            top_syms = ranked["symbol"].tolist()
+        else:
+            top_syms = ranked["symbol"].head(top_k).tolist()
+        logger.info("Plotting %d symbols (history + forecast)…", len(top_syms))
         plotted = plot_many(top_syms, metrics_dir, plots_dir)
 
     enriched: list[str] = []

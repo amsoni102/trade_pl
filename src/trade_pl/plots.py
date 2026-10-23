@@ -113,9 +113,38 @@ def plot_symbol(symbol: str, metrics_dir: Path, plots_dir: Path) -> Path | None:
     return out
 
 
-def plot_many(symbols: list[str], metrics_dir: Path, plots_dir: Path) -> list[str]:
-    done: list[str] = []
-    for sym in symbols:
-        if plot_symbol(sym, metrics_dir, plots_dir):
-            done.append(sym)
+def plot_many(
+    symbols: list[str],
+    metrics_dir: Path,
+    plots_dir: Path,
+    workers: int = 4,
+) -> list[str]:
+    """Build dashboard / drawdown / forecast charts. Skip symbols that already have a dashboard."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    need = [
+        s
+        for s in symbols
+        if not (plots_dir / s / "dashboard.html").exists()
+        or not (plots_dir / s / "drawdown.html").exists()
+    ]
+    if not need:
+        return [s for s in symbols if (plots_dir / s / "dashboard.html").exists()]
+
+    done: list[str] = [s for s in symbols if s not in need and (plots_dir / s / "dashboard.html").exists()]
+
+    def _one(sym: str) -> str | None:
+        try:
+            if plot_symbol(sym, metrics_dir, plots_dir):
+                return sym
+        except Exception:
+            return None
+        return None
+
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futs = [pool.submit(_one, s) for s in need]
+        for fut in as_completed(futs):
+            sym = fut.result()
+            if sym:
+                done.append(sym)
     return done

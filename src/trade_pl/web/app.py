@@ -80,20 +80,43 @@ def _refresh_filings_and_calendar(symbols: list[str]) -> None:
     threading.Thread(target=_job, name="filings-calendar", daemon=True).start()
 
 
+def _ensure_all_plots(symbols: list[str]) -> None:
+    """Background: history charts for every scored symbol that is still missing."""
+    import threading
+
+    def _job() -> None:
+        try:
+            from trade_pl.plots import plot_many
+
+            paths = _paths()
+            plot_many(symbols, paths["metrics"], paths["plots"], workers=4)
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger("trade_pl").warning("plot backfill failed: %s", exc)
+
+    threading.Thread(target=_job, name="plot-backfill", daemon=True).start()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Keep scanning public finance RSS / news feeds for as long as the website is up.
     universe: list[str] = []
+    all_syms: list[str] = []
     lb = _paths()["reports"] / "latest" / "leaderboard.csv"
     if lb.exists():
         try:
-            universe = pd.read_csv(lb)["symbol"].astype(str).head(500).tolist()
+            all_syms = pd.read_csv(lb)["symbol"].astype(str).tolist()
+            universe = all_syms[:500]
         except Exception:
             universe = []
+            all_syms = []
     scanner = get_scanner(cache_path=ROOT / "data" / "breaking_news.json", universe=universe)
     scanner.start()
     if universe:
         _refresh_filings_and_calendar(universe)
+    if all_syms:
+        _ensure_all_plots(all_syms)
     yield
     scanner.stop()
 

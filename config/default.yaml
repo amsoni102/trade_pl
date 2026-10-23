@@ -17,8 +17,8 @@ weights:
   liquidity: 0.10
 
 # Top lists: large enough for a real research board
-# Ensure every top-tier name gets dashboard + drawdown + 5y forecast plots
-plot_top_k: 500
+# plot_top_k: 0 = every scored symbol gets dashboard + drawdown + 5y forecast
+plot_top_k: 0
 enrich_top_k: 500
 horizon_top_n: 150
 sector_top_n: 80
