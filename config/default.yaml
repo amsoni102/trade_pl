@@ -18,10 +18,10 @@ weights:
 
 # Top lists: large enough for a real research board
 # Ensure every top-tier name gets dashboard + drawdown + 5y forecast plots
-plot_top_k: 300
-enrich_top_k: 300
-horizon_top_n: 100
-sector_top_n: 50
+plot_top_k: 500
+enrich_top_k: 500
+horizon_top_n: 150
+sector_top_n: 80
 
 # Parallel downloads — keep low. Yahoo shares one crumb; >4 workers → 401 Invalid Crumb.
 ingest_workers: 3

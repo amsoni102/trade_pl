@@ -60,7 +60,7 @@ async def lifespan(_app: FastAPI):
     lb = _paths()["reports"] / "latest" / "leaderboard.csv"
     if lb.exists():
         try:
-            universe = pd.read_csv(lb)["symbol"].astype(str).head(300).tolist()
+            universe = pd.read_csv(lb)["symbol"].astype(str).head(500).tolist()
         except Exception:
             universe = []
     scanner = get_scanner(cache_path=ROOT / "data" / "breaking_news.json", universe=universe)

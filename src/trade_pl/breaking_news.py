@@ -15,27 +15,51 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+def _yahoo_rss(symbol: str, label: str | None = None) -> dict[str, str]:
+    from urllib.parse import quote
+
+    name = label or f"Yahoo · {symbol}"
+    return {
+        "name": name,
+        "url": f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={quote(symbol)}&region=US&lang=en-US",
+    }
+
+
 # Public RSS endpoints designed for syndication (stable vs scraping HTML).
 RSS_SOURCES: list[dict[str, str]] = [
-    # Broad market
-    {"name": "Yahoo · S&P 500", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US"},
-    {"name": "Yahoo · Nasdaq", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EIXIC&region=US&lang=en-US"},
-    {"name": "Yahoo · Dow", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EDJI&region=US&lang=en-US"},
-    {"name": "Yahoo · Russell 2000", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5ERUT&region=US&lang=en-US"},
-    {"name": "Yahoo · Oil", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=CL%3DF&region=US&lang=en-US"},
-    {"name": "Yahoo · Gold", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GC%3DF&region=US&lang=en-US"},
-    {"name": "Yahoo · Treasury", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5ETNX&region=US&lang=en-US"},
-    # Mega-cap / sector proxies
-    {"name": "Yahoo · AAPL", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US"},
-    {"name": "Yahoo · MSFT", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=MSFT&region=US&lang=en-US"},
-    {"name": "Yahoo · NVDA", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA&region=US&lang=en-US"},
-    {"name": "Yahoo · TSLA", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=TSLA&region=US&lang=en-US"},
-    {"name": "Yahoo · AMZN", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AMZN&region=US&lang=en-US"},
-    {"name": "Yahoo · META", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=META&region=US&lang=en-US"},
-    {"name": "Yahoo · GOOGL", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GOOGL&region=US&lang=en-US"},
-    {"name": "Yahoo · XOM", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=XOM&region=US&lang=en-US"},
-    {"name": "Yahoo · JPM", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=JPM&region=US&lang=en-US"},
-    {"name": "Yahoo · LLY", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=LLY&region=US&lang=en-US"},
+    # Indexes / macro
+    _yahoo_rss("^GSPC", "Yahoo · S&P 500"),
+    _yahoo_rss("^IXIC", "Yahoo · Nasdaq"),
+    _yahoo_rss("^DJI", "Yahoo · Dow"),
+    _yahoo_rss("^RUT", "Yahoo · Russell 2000"),
+    _yahoo_rss("^VIX", "Yahoo · VIX"),
+    _yahoo_rss("^TNX", "Yahoo · Treasury"),
+    _yahoo_rss("^FVX", "Yahoo · 5Y Yield"),
+    _yahoo_rss("CL=F", "Yahoo · Oil"),
+    _yahoo_rss("GC=F", "Yahoo · Gold"),
+    _yahoo_rss("SI=F", "Yahoo · Silver"),
+    _yahoo_rss("NG=F", "Yahoo · NatGas"),
+    _yahoo_rss("BTC-USD", "Yahoo · Bitcoin"),
+    _yahoo_rss("ETH-USD", "Yahoo · Ethereum"),
+    _yahoo_rss("EURUSD=X", "Yahoo · EUR/USD"),
+    _yahoo_rss("JPY=X", "Yahoo · USD/JPY"),
+    # ETFs / sectors
+    *[_yahoo_rss(s) for s in (
+        "SPY", "QQQ", "IWM", "DIA", "XLF", "XLK", "XLE", "XLV", "XLI", "XLY",
+        "XLP", "XLU", "XLB", "XLRE", "SMH", "SOXX", "ARKK", "XBI", "IBB", "KRE",
+        "GLD", "USO", "TLT", "HYG", "EEM", "EFA", "FXI", "EWJ", "EWZ", "VWO",
+    )],
+    # Mega / large liquid names
+    *[_yahoo_rss(s) for s in (
+        "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "GOOGL", "GOOG", "BRK-B",
+        "AVGO", "JPM", "V", "MA", "XOM", "CVX", "LLY", "UNH", "JNJ", "WMT", "PG",
+        "ORCL", "CRM", "AMD", "INTC", "QCOM", "NFLX", "DIS", "BA", "CAT", "GE",
+        "COST", "HD", "KO", "PEP", "ABBV", "MRK", "PFE", "TMO", "DHR", "ISRG",
+        "BAC", "WFC", "GS", "MS", "C", "SCHW", "BLK", "BX", "UBER", "ABNB",
+        "SHOP", "SNOW", "PLTR", "COIN", "HOOD", "SQ", "PYPL", "NKE", "SBUX",
+        "TSM", "ASML", "SAP", "BABA", "PDD", "JD", "NIO", "SONY", "TM", "SHEL",
+        "BP", "TTE", "RIO", "BHP", "VALE", "NEM", "FCX", "SLB", "COP", "OXY",
+    )],
     # CNBC
     {"name": "CNBC Top News", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
     {"name": "CNBC Markets", "url": "https://www.cnbc.com/id/15839069/device/rss/rss.html"},
@@ -44,50 +68,98 @@ RSS_SOURCES: list[dict[str, str]] = [
     {"name": "CNBC Energy", "url": "https://www.cnbc.com/id/19836768/device/rss/rss.html"},
     {"name": "CNBC Health Care", "url": "https://www.cnbc.com/id/10000108/device/rss/rss.html"},
     {"name": "CNBC Earnings", "url": "https://www.cnbc.com/id/15839135/device/rss/rss.html"},
-    {"name": "CNBC Investing", "url": "https://www.cnbc.com/id/15839069/device/rss/rss.html"},
-    # MarketWatch / Nasdaq / BBC
+    {"name": "CNBC World Economy", "url": "https://www.cnbc.com/id/20910258/device/rss/rss.html"},
+    {"name": "CNBC Politics", "url": "https://www.cnbc.com/id/10000113/device/rss/rss.html"},
+    {"name": "CNBC Real Estate", "url": "https://www.cnbc.com/id/10000115/device/rss/rss.html"},
+    # MarketWatch / Nasdaq / wire-ish
     {"name": "MarketWatch Top", "url": "https://feeds.marketwatch.com/marketwatch/topstories/"},
     {"name": "MarketWatch Markets", "url": "https://feeds.marketwatch.com/marketwatch/marketpulse/"},
     {"name": "MarketWatch Breaking", "url": "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/"},
     {"name": "MarketWatch Bulletins", "url": "https://feeds.marketwatch.com/marketwatch/bulletins/"},
+    {"name": "MarketWatch Personal Finance", "url": "https://feeds.marketwatch.com/marketwatch/pf/"},
     {"name": "Nasdaq Stocks", "url": "https://www.nasdaq.com/feed/rssoutbound?category=Stocks"},
     {"name": "Nasdaq Markets", "url": "https://www.nasdaq.com/feed/rssoutbound?category=Markets"},
     {"name": "Nasdaq Cryptocurrency", "url": "https://www.nasdaq.com/feed/rssoutbound?category=Cryptocurrencies"},
+    {"name": "Nasdaq Originals", "url": "https://www.nasdaq.com/feed/rssoutbound?category=Nasdaq%20Originals"},
     {"name": "BBC Business", "url": "https://feeds.bbci.co.uk/news/business/rss.xml"},
     {"name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
+    {"name": "BBC Technology", "url": "https://feeds.bbci.co.uk/news/technology/rss.xml"},
     {"name": "Guardian Business", "url": "https://www.theguardian.com/uk/business/rss"},
     {"name": "Guardian Markets", "url": "https://www.theguardian.com/business/stock-markets/rss"},
+    {"name": "Guardian Technology", "url": "https://www.theguardian.com/uk/technology/rss"},
     {"name": "Reuters Business", "url": "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best"},
     {"name": "Investing.com", "url": "https://www.investing.com/rss/news.rss"},
     {"name": "Investing.com Stock", "url": "https://www.investing.com/rss/news_25.rss"},
     {"name": "Investing.com Economy", "url": "https://www.investing.com/rss/news_95.rss"},
     {"name": "Investing.com Commodities", "url": "https://www.investing.com/rss/news_11.rss"},
+    {"name": "Investing.com Crypto", "url": "https://www.investing.com/rss/news_301.rss"},
+    {"name": "Investing.com Forex", "url": "https://www.investing.com/rss/news_1.rss"},
     {"name": "Fed Press", "url": "https://www.federalreserve.gov/feeds/press_all.xml"},
+    {"name": "Fed Speeches", "url": "https://www.federalreserve.gov/feeds/press_all.xml"},
     {"name": "SEC Press", "url": "https://www.sec.gov/news/pressreleases.rss"},
+    {"name": "SEC Speeches", "url": "https://www.sec.gov/news/speeches-statements.rss"},
+    {"name": "NYT Business", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml"},
+    {"name": "NYT Economy", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml"},
+    {"name": "NYT Technology", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"},
+    {"name": "WSJ Markets", "url": "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines"},
+    {"name": "Seeking Alpha", "url": "https://seekingalpha.com/market_currents.xml"},
+    {"name": "Motley Fool", "url": "https://www.fool.com/a/feeds/partner/google-news.xml"},
 ]
 
 # Topic queries via Yahoo search API (broader than ticker-only).
 TOPIC_QUERIES: list[str] = [
-    "stock market",
+    "stock market today",
     "Federal Reserve",
+    "Jerome Powell",
     "interest rates",
     "inflation CPI",
+    "PCE inflation",
+    "jobs report NFP",
     "earnings season",
-    "oil prices",
+    "guidance raise",
+    "guidance cut",
+    "oil prices OPEC",
+    "natural gas prices",
+    "gold prices",
+    "copper prices",
     "semiconductor chips",
+    "NVIDIA AI",
     "AI stocks",
+    "cloud computing stocks",
+    "cybersecurity stocks",
     "bank stocks",
+    "regional banks",
+    "credit card spending",
     "merger acquisition",
-    "IPO",
+    "activist investor",
+    "IPO listing",
+    "SPACs",
     "treasury yields",
-    "recession",
+    "bond market",
+    "dollar index",
+    "recession risk",
+    "soft landing",
     "China stocks",
-    "Europe markets",
-    "biotech FDA",
+    "Japan stocks Nikkei",
+    "Europe markets Stoxx",
+    "emerging markets",
+    "biotech FDA approval",
+    "pharma pipeline",
     "electric vehicles",
+    "autonomous driving",
+    "solar energy stocks",
+    "nuclear energy uranium",
     "cryptocurrency bitcoin",
-    "housing market",
-    "consumer spending",
+    "ethereum ETF",
+    "housing market mortgage",
+    "commercial real estate",
+    "consumer spending retail",
+    "airline stocks travel",
+    "defense stocks",
+    "tariffs trade war",
+    "sanctions markets",
+    "short squeeze",
+    "options unusual activity",
 ]
 
 TICKER_RE = re.compile(r"\b([A-Z]{1,5})(?:\s|\.|'s|/|,|:|$)", re.ASCII)
@@ -108,7 +180,9 @@ class BreakingNewsScanner:
     ) -> None:
         self.cache_path = cache_path
         self.refresh_seconds = max(60, refresh_seconds)
-        self.universe = {t.upper() for t in (universe or [])}
+        ordered = [str(t).upper() for t in (universe or [])]
+        self.universe_ordered = ordered
+        self.universe = set(ordered)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -140,7 +214,9 @@ class BreakingNewsScanner:
             return json.loads(json.dumps(self._state))
 
     def set_universe(self, tickers: list[str]) -> None:
-        self.universe = {t.upper() for t in tickers}
+        ordered = [str(t).upper() for t in tickers]
+        self.universe_ordered = ordered
+        self.universe = set(ordered)
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -178,7 +254,7 @@ class BreakingNewsScanner:
 
         def _rss_job(src: dict[str, str]) -> tuple[str, list[dict[str, Any]] | None, str | None]:
             try:
-                return src["name"], _fetch_rss(src["url"], src["name"], limit=18), None
+                return src["name"], _fetch_rss(src["url"], src["name"], limit=25), None
             except Exception as exc:  # noqa: BLE001
                 return src["name"], None, str(exc)
 
@@ -188,13 +264,16 @@ class BreakingNewsScanner:
             except Exception as exc:  # noqa: BLE001
                 return label, None, str(exc)
 
-        with ThreadPoolExecutor(max_workers=16) as pool:
+        topic_set = set(TOPIC_QUERIES)
+        # Ranked order from leaderboard (fallback: sorted set)
+        ticker_slice = (self.universe_ordered or sorted(self.universe))[:400]
+
+        with ThreadPoolExecutor(max_workers=24) as pool:
             futs = [pool.submit(_rss_job, src) for src in RSS_SOURCES]
             for topic in TOPIC_QUERIES:
-                futs.append(pool.submit(_yahoo_job, topic, 6, f"Yahoo · {topic}"))
-            ticker_slice = list(self.universe)[:120]
+                futs.append(pool.submit(_yahoo_job, topic, 8, f"Yahoo · {topic}"))
             for sym in ticker_slice:
-                futs.append(pool.submit(_yahoo_job, sym, 4, f"Yahoo · {sym}"))
+                futs.append(pool.submit(_yahoo_job, sym, 5, f"Yahoo · {sym}"))
 
             topic_ok = False
             ticker_ok = 0
@@ -204,11 +283,12 @@ class BreakingNewsScanner:
                     failed.append(f"{name}: {err}")
                     continue
                 items.extend(fetched)
-                if name.startswith("Yahoo · ") and name.split(" · ", 1)[-1] in TOPIC_QUERIES:
+                suffix = name.split(" · ", 1)[-1] if " · " in name else name
+                if name.startswith("Yahoo · ") and suffix in topic_set:
                     topic_ok = True
-                elif name.startswith("Yahoo · ") and name.split(" · ", 1)[-1] in self.universe:
+                elif name.startswith("Yahoo · ") and suffix in self.universe:
                     ticker_ok += 1
-                elif not name.startswith("Yahoo · "):
+                else:
                     ok.append(name)
 
         if topic_ok:
@@ -228,7 +308,7 @@ class BreakingNewsScanner:
             key=lambda x: (x.get("priority", 0), x.get("published_ts") or 0),
             reverse=True,
         )
-        top = deduped[:220]
+        top = deduped[:400]
         groups = _group_items(top)
 
         payload = {
@@ -236,13 +316,16 @@ class BreakingNewsScanner:
             "scanning": False,
             "items": top,
             "groups": groups,
-            "breaking": [x for x in top if x.get("breaking")][:40],
-            "with_tickers": [x for x in top if x.get("tickers")][:60],
+            "breaking": [x for x in top if x.get("breaking")][:60],
+            "with_tickers": [x for x in top if x.get("tickers")][:100],
             "sources_ok": ok,
             "sources_failed": failed,
             "error": None,
             "count": len(top),
             "raw_fetched": len(items),
+            "rss_configured": len(RSS_SOURCES),
+            "topics_configured": len(TOPIC_QUERIES),
+            "tickers_queried": len(ticker_slice),
         }
         with self._lock:
             self._state = payload
