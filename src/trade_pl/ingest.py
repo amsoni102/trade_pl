@@ -29,8 +29,10 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 # Serialize crumb-sensitive history fetches across threads.
+# Shared with enrichment so pipeline stages don't fight Yahoo's crumb.
 _YF_LOCK = threading.Lock()
 _LAST_FETCH_TS = 0.0
+_ADAPTIVE_BACKOFF = 0.0
 
 # Known dead / acquired / Yahoo-404 tickers. Skip without calling the API.
 # Keep small; prefer removing from universe_catalog when confirmed.
@@ -157,13 +159,42 @@ def _is_permanent_error(exc: BaseException | str) -> bool:
 
 def _pace(min_interval: float) -> None:
     global _LAST_FETCH_TS
-    if min_interval <= 0:
+    if min_interval <= 0 and _ADAPTIVE_BACKOFF <= 0:
         return
     now = time.monotonic()
-    wait = min_interval - (now - _LAST_FETCH_TS)
+    gap = max(0.0, float(min_interval)) + _ADAPTIVE_BACKOFF
+    wait = gap - (now - _LAST_FETCH_TS)
     if wait > 0:
-        time.sleep(wait + random.uniform(0, min_interval * 0.25))
+        time.sleep(wait + random.uniform(0, max(0.05, gap * 0.2)))
     _LAST_FETCH_TS = time.monotonic()
+
+
+def yahoo_note_throttle() -> None:
+    """Widen the shared Yahoo gap after a 429 / crumb failure."""
+    global _ADAPTIVE_BACKOFF
+    _ADAPTIVE_BACKOFF = min(10.0, max(1.2, _ADAPTIVE_BACKOFF * 1.6) + 0.4)
+
+
+def yahoo_note_ok() -> None:
+    """Ease adaptive backoff after a successful Yahoo call."""
+    global _ADAPTIVE_BACKOFF
+    _ADAPTIVE_BACKOFF = max(0.0, _ADAPTIVE_BACKOFF * 0.65 - 0.15)
+
+
+def yahoo_is_throttle(exc: BaseException | str) -> bool:
+    return _is_auth_error(exc)
+
+
+def yahoo_reset_auth() -> None:
+    _reset_yahoo_auth()
+
+
+@contextmanager
+def yahoo_slot(min_interval: float = 0.5):
+    """Hold the shared Yahoo lock and pace before a crumb-sensitive call."""
+    with _YF_LOCK:
+        _pace(min_interval)
+        yield
 
 
 def download_ticker(

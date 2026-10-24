@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }} {{ filing.form }} — trade_pl{% endblock %}
+{% block content %}
+<section class="filing-reader">
+  <p class="muted small">
+    <a href="/stock/{{ symbol }}">← {{ symbol }}</a>
+    · <a href="/stock/{{ symbol }}#sec-filings">All filings</a>
+  </p>
+  <header class="filing-head">
+    <div>
+      <h1>{{ filing.form }} <span class="muted">{{ filing.filing_date }}</span></h1>
+      <p class="muted">{{ company }} · {{ filing.label or filing.form }} · accession {{ accession }}</p>
+      <p class="muted small">
+        Showing the document SEC filed
+        {% if active_name %}<code>{{ active_name }}</code>{% endif %}
+        {% if filing.document and active_name == filing.document %}(primary){% endif %}.
+      </p>
+    </div>
+    <div class="filing-actions">
+      {% if sec_open %}
+      <a class="btn" href="{{ sec_open }}" target="_blank" rel="noopener">Open on SEC</a>
+      {% endif %}
+      {% if filing.url_viewer %}
+      <a href="{{ filing.url_viewer }}" target="_blank" rel="noopener">Interactive viewer</a>
+      {% endif %}
+      {% if filing.url_index %}
+      <a href="{{ filing.url_index }}" target="_blank" rel="noopener">EDGAR index</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="filing-layout">
+    <aside class="filing-docs">
+      <h2>Documents in this filing</h2>
+      <p class="muted small">Every openable file from the SEC package. Primary is listed first.</p>
+      <ul class="doc-list">
+        {% for d in documents %}
+        <li class="{% if d.name == active_name %}active{% endif %}{% if d.primary %} primary{% endif %}">
+          <a href="/stock/{{ symbol }}/filing?accession={{ accession }}&doc={{ d.name|urlencode }}">
+            <span class="doc-name">{{ d.name }}</span>
+            <span class="doc-meta">
+              {% if d.primary %}primary · {% endif %}{{ d.kind }}
+              {% if d.size %} · {{ (d.size / 1024)|round(0)|int }} KB{% endif %}
+            </span>
+          </a>
+          {% if d.url_open %}
+          <a class="doc-ext" href="{{ d.url_open }}" target="_blank" rel="noopener" title="Open on SEC">↗</a>
+          {% endif %}
+        </li>
+        {% else %}
+        <li class="muted">No package documents listed yet.</li>
+        {% endfor %}
+      </ul>
+    </aside>
+
+    <div class="filing-pane">
+      {% if active_kind == 'html' %}
+      <p class="filing-tip muted small">
+        HTML filings are often iXBRL. Use <strong>Open on SEC</strong> for the official readable view;
+        the pane below embeds the presented file as filed (may show tags).
+      </p>
+      {% endif %}
+      {% if embed_url %}
+      <div class="filing-frame-wrap">
+        <iframe
+          class="filing-frame"
+          title="{{ active_name }}"
+          src="{{ embed_url }}"
+          {% if active_kind == 'pdf' %}type="application/pdf"{% endif %}
+        ></iframe>
+      </div>
+      {% else %}
+      <div class="filing-empty">
+        <p>Select a document, or open it on SEC.</p>
+        {% if sec_open %}
+        <p><a class="btn" href="{{ sec_open }}" target="_blank" rel="noopener">Open presented document on SEC</a></p>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

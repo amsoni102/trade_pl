@@ -7,8 +7,8 @@ from typing import Any
 
 import pandas as pd
 import uvicorn
-from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -691,6 +691,11 @@ def stock_detail(
                 and "ix?doc=" not in str((f or {}).get("url_open") or "")
                 for f in (filings.get("filings") or [])[:3]
             )
+            # Prefer caches that already list package documents.
+            or (
+                bool(filings.get("filings"))
+                and not any((f or {}).get("documents") for f in (filings.get("filings") or [])[:3])
+            )
         )
         if needs_filings:
             cik_map = load_ticker_cik_map(ROOT / "data" / "sec_cik_map.json")
@@ -716,6 +721,116 @@ def stock_detail(
             "filings": filings,
         },
     )
+
+
+@app.get("/stock/{symbol}/filing", response_class=HTMLResponse)
+def stock_filing_reader(
+    request: Request,
+    symbol: str,
+    accession: str = Query(...),
+    doc: str = Query(""),
+) -> HTMLResponse:
+    """In-app reader: includes the SEC-presented primary + package documents."""
+    from trade_pl.sec_filings import (
+        doc_kind,
+        ensure_filing_documents,
+        fetch_filings_for_symbol,
+        load_filings,
+        load_ticker_cik_map,
+        open_url_for_doc,
+        safe_doc_name,
+        save_filings,
+    )
+
+    symbol = normalize_symbol(symbol)
+    filings_dir = _paths()["filings"]
+    payload = load_filings(filings_dir, symbol)
+    if payload is None:
+        cik_map = load_ticker_cik_map(ROOT / "data" / "sec_cik_map.json")
+        payload = fetch_filings_for_symbol(symbol, cik_map)
+        save_filings(filings_dir, payload)
+
+    filing = ensure_filing_documents(payload, accession)
+    if filing is None:
+        raise HTTPException(status_code=404, detail="Filing not found for this symbol")
+    try:
+        save_filings(filings_dir, payload)
+    except Exception:
+        pass
+
+    cik = str(payload.get("cik") or "")
+    primary = str(filing.get("document") or "")
+    chosen = safe_doc_name(doc) or primary
+    documents = list(filing.get("documents") or [])
+    if chosen and not any(d.get("name") == chosen for d in documents):
+        documents = [
+            {
+                "name": chosen,
+                "kind": doc_kind(chosen),
+                "primary": chosen.lower() == primary.lower(),
+                "url_sec": f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession.replace('-', '')}/{chosen}"
+                if cik
+                else "",
+                "url_open": open_url_for_doc(cik, accession, chosen) if cik else "",
+                "size": 0,
+                "description": "",
+            }
+        ] + documents
+
+    active = next((d for d in documents if d.get("name") == chosen), None)
+    kind = (active or {}).get("kind") or doc_kind(chosen)
+    embed_url = None
+    if kind in ("pdf", "other", "sheet", "html") and cik and chosen:
+        # Proxy so PDFs/HTML embed in-app (SEC sets X-Frame-Options: SAMEORIGIN).
+        embed_url = f"/sec/doc?cik={cik}&accession={accession}&name={chosen}"
+
+    sec_open = (active or {}).get("url_open") or filing.get("url_open")
+    if kind == "html" and cik and chosen:
+        sec_open = open_url_for_doc(cik, accession, chosen)
+
+    return templates.TemplateResponse(
+        request,
+        "filing.html",
+        {
+            "symbol": symbol,
+            "company": payload.get("company_name") or symbol,
+            "cik": cik,
+            "filing": filing,
+            "documents": documents,
+            "active_name": chosen,
+            "active_kind": kind,
+            "embed_url": embed_url,
+            "sec_open": sec_open,
+            "accession": accession,
+        },
+    )
+
+
+@app.get("/sec/doc")
+def sec_doc_proxy(
+    cik: str = Query(...),
+    accession: str = Query(...),
+    name: str = Query(...),
+) -> Response:
+    """Proxy a real EDGAR package file so we can embed it in-app."""
+    from trade_pl.sec_filings import doc_kind, fetch_sec_bytes, prepare_html_for_embed, safe_doc_name
+
+    safe = safe_doc_name(name)
+    if not safe:
+        raise HTTPException(status_code=400, detail="Invalid document name")
+    try:
+        data, ctype = fetch_sec_bytes(cik, accession, safe)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    kind = doc_kind(safe)
+    headers = {"Cache-Control": "public, max-age=3600"}
+    if kind == "html":
+        data = prepare_html_for_embed(data, cik, accession)
+        return Response(content=data, media_type="text/html; charset=utf-8", headers=headers)
+    if kind == "pdf":
+        return Response(content=data, media_type="application/pdf", headers=headers)
+    return Response(content=data, media_type=ctype or "application/octet-stream", headers=headers)
 
 
 @app.get("/compare", response_class=HTMLResponse)

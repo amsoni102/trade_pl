@@ -144,8 +144,15 @@ def build_events_from_filings(symbol: str, filings_payload: dict[str, Any], toda
                 "importance": min(99, base + freshness),
                 "source": "sec_edgar",
                 "form": f.get("form"),
-                # Prefer real HTML / index — invented .pdf siblings 404 as XML on SEC.
-                "url": f.get("url_open") or f.get("url_html") or f.get("url_index") or f.get("url_pdf"),
+                "accession": f.get("accession"),
+                "document": f.get("document"),
+                # In-app reader includes the presented primary + package docs.
+                "url": (
+                    f"/stock/{symbol}/filing?accession={f.get('accession')}"
+                    if f.get("accession")
+                    else (f.get("url_open") or f.get("url_html") or f.get("url_index") or f.get("url_pdf"))
+                ),
+                "url_open": f.get("url_open"),
                 "url_html": f.get("url_html") or f.get("url_index"),
                 "url_index": f.get("url_index"),
                 "url_pdf": f.get("url_pdf"),

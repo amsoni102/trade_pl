@@ -3,11 +3,15 @@ from __future__ import annotations
 """Official SEC EDGAR filings (10-K / 10-Q / 8-K) with document links.
 
 Uses the public data.sec.gov API. Not every non-US ticker has a CIK.
+Primary documents are the files SEC lists as ``primaryDocument``; we open those
+via the iXBRL viewer (or a real PDF when present) and list package exhibits.
 """
 
 import json
 import logging
+import re
 import time
+import urllib.error
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -17,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 # SEC requires a descriptive User-Agent with a contact address (403 otherwise).
 SEC_UA = "trade_pl research bot contact@example.com"
+_SKIP_DOC_NAMES = {
+    "index.json",
+    "filingsummary.xml",
+    "metalinks.json",
+    "reportingdisplay.xslt",
+}
 IMPORTANT_FORMS = {
     "10-K": {"label": "Annual report (10-K)", "importance": 5, "kind": "annual"},
     "10-K/A": {"label": "Annual report amendment", "importance": 4, "kind": "annual"},
@@ -106,6 +116,20 @@ def _ix_url(cik: str, accession: str, primary: str) -> str:
     return f"https://www.sec.gov/ix?doc={path}"
 
 
+def safe_doc_name(name: str) -> str | None:
+    """Reject path traversal / junk; allow only a bare archive filename."""
+    name = (name or "").strip()
+    if not name or "/" in name or "\\" in name or ".." in name:
+        return None
+    if not re.match(r"^[\w.\-()+ ]+$", name):
+        return None
+    return name
+
+
+# Back-compat alias used internally.
+_safe_doc_name = safe_doc_name
+
+
 def _list_package_files(cik: str, accession: str) -> list[dict[str, Any]]:
     """Files in the filing package via EDGAR index.json."""
     acc = accession.replace("-", "")
@@ -119,6 +143,109 @@ def _list_package_files(cik: str, accession: str) -> list[dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001
         logger.debug("index.json failed %s %s: %s", cik, accession, exc)
         return []
+
+
+def _is_presentable_doc(name: str) -> bool:
+    n = name.lower()
+    if n in _SKIP_DOC_NAMES:
+        return False
+    if re.match(r"^r\d+", n):  # XBRL report fragments
+        return False
+    if "-index" in n or n.endswith("-index.htm") or n.endswith("-index.html"):
+        return False
+    if n.endswith(("-index-headers.html", "-index-headers.htm")):
+        return False
+    if n.endswith((".xsd", ".xml", ".json", ".css", ".js", ".gif", ".jpg", ".jpeg", ".png", ".svg")):
+        return False
+    # Prefer human docs + exhibits; skip raw submission .txt / xbrl zip clutter.
+    if n.endswith((".txt", ".zip")):
+        return False
+    return n.endswith((".htm", ".html", ".xhtml", ".pdf", ".xlsx", ".xls", ".csv"))
+
+
+def doc_kind(name: str) -> str:
+    n = name.lower()
+    if n.endswith(".pdf"):
+        return "pdf"
+    if n.endswith((".htm", ".html", ".xhtml")):
+        return "html"
+    if n.endswith((".xlsx", ".xls", ".csv")):
+        return "sheet"
+    return "other"
+
+
+_doc_kind = doc_kind
+
+
+def open_url_for_doc(cik: str, accession: str, name: str, *, prefer_ix: bool = True) -> str:
+    """Human-openable URL for a package file (ix viewer for HTML, direct otherwise)."""
+    kind = doc_kind(name)
+    if kind == "html" and prefer_ix:
+        return _ix_url(cik, accession, name)
+    return _doc_url(cik, accession, name)
+
+
+_open_url_for_doc = open_url_for_doc
+
+
+def _package_documents(
+    cik: str,
+    accession: str,
+    primary: str,
+    items: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Curated list of openable documents from the filing package.
+
+    Always includes the SEC-presented primary document first.
+    """
+    primary = (primary or "").strip()
+    if items is None:
+        items = _list_package_files(cik, accession)
+
+    by_name: dict[str, dict[str, Any]] = {}
+    for it in items:
+        name = _safe_doc_name(str(it.get("name") or ""))
+        if not name or not _is_presentable_doc(name):
+            continue
+        try:
+            size = int(str(it.get("size") or "0") or 0)
+        except Exception:
+            size = 0
+        by_name[name] = {
+            "name": name,
+            "size": size,
+            "kind": _doc_kind(name),
+            "primary": bool(primary) and name.lower() == primary.lower(),
+            "url_sec": _doc_url(cik, accession, name),
+            "url_open": _open_url_for_doc(cik, accession, name),
+            "description": str(it.get("description") or it.get("type") or ""),
+        }
+
+    # Ensure the presented primary is listed even if index.json omitted it.
+    if primary and _safe_doc_name(primary):
+        if primary not in by_name:
+            by_name[primary] = {
+                "name": primary,
+                "size": 0,
+                "kind": _doc_kind(primary),
+                "primary": True,
+                "url_sec": _doc_url(cik, accession, primary),
+                "url_open": _open_url_for_doc(cik, accession, primary),
+                "description": "Primary document",
+            }
+        else:
+            by_name[primary]["primary"] = True
+
+    docs = list(by_name.values())
+    docs.sort(
+        key=lambda d: (
+            0 if d.get("primary") else 1,
+            0 if d.get("kind") == "pdf" else 1,
+            -(d.get("size") or 0),
+            str(d.get("name") or ""),
+        )
+    )
+    return docs
 
 
 def _pick_real_pdf(items: list[dict[str, Any]], primary: str) -> str | None:
@@ -150,9 +277,9 @@ def _filing_urls(
     accession: str,
     primary: str,
     *,
-    resolve_pdf: bool = False,
-) -> dict[str, str | None]:
-    """Build working EDGAR links.
+    resolve_package: bool = False,
+) -> dict[str, Any]:
+    """Build working EDGAR links + optional package document list.
 
     Modern 10-K/10-Q primaries are iXBRL ``.htm`` files. Opening them directly
     often shows raw XML / empty Adobe tabs. Use the SEC **ix** viewer instead.
@@ -165,20 +292,25 @@ def _filing_urls(
     is_pdf = primary.lower().endswith(".pdf")
     is_html = primary.lower().endswith((".htm", ".html", ".xhtml"))
 
+    items: list[dict[str, Any]] = []
+    documents: list[dict[str, Any]] = []
     pdf_name: str | None = primary if is_pdf else None
-    if resolve_pdf and not pdf_name:
+    if resolve_package:
         items = _list_package_files(cik, accession)
-        pdf_name = _pick_real_pdf(items, primary)
+        documents = _package_documents(cik, accession, primary, items)
+        if not pdf_name:
+            pdf_name = _pick_real_pdf(items, primary)
 
     pdf_url = _doc_url(cik, accession, pdf_name) if pdf_name else None
     ix = _ix_url(cik, accession, primary) if (primary and is_html) else None
 
-    # Best human-readable open target:
-    # 1) real PDF if present  2) iXBRL viewer  3) interactive viewer  4) index
-    if pdf_url:
+    # Prefer the presented primary (ix / pdf), not a side exhibit PDF.
+    if is_pdf and pdf_url:
         open_url = pdf_url
     elif ix:
         open_url = ix
+    elif pdf_url:
+        open_url = pdf_url
     else:
         open_url = viewer if accession else (doc or index)
 
@@ -189,7 +321,52 @@ def _filing_urls(
         "index": index,
         "viewer": viewer,
         "open": open_url,
+        "documents": documents,
     }
+
+
+def fetch_sec_bytes(cik: str, accession: str, name: str, timeout: int = 60) -> tuple[bytes, str]:
+    """Download a single archive file (for in-app reader / proxy)."""
+    safe = _safe_doc_name(name)
+    if not safe:
+        raise ValueError("invalid document name")
+    url = _doc_url(cik, accession, safe)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": SEC_UA,
+            "Accept": "*/*",
+            "Accept-Encoding": "identity",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
+            ctype = (resp.headers.get("Content-Type") or "application/octet-stream").split(";")[0].strip()
+            return data, ctype
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"SEC fetch HTTP {exc.code}") from exc
+
+
+def prepare_html_for_embed(html: bytes, cik: str, accession: str) -> bytes:
+    """Inject <base href> so relative SEC assets resolve when we proxy HTML."""
+    acc = accession.replace("-", "")
+    cik_n = str(int(cik))
+    base = f"https://www.sec.gov/Archives/edgar/data/{cik_n}/{acc}/"
+    text = html.decode("utf-8", errors="replace")
+    base_tag = f'<base href="{base}">'
+    low = text.lower()
+    if "<base " in low:
+        return text.encode("utf-8")
+    if "<head" in low:
+        # Insert after <head ...>
+        m = re.search(r"<head[^>]*>", text, flags=re.IGNORECASE)
+        if m:
+            i = m.end()
+            text = text[:i] + base_tag + text[i:]
+            return text.encode("utf-8")
+    text = base_tag + text
+    return text.encode("utf-8")
 
 
 def fetch_filings_for_symbol(
@@ -253,12 +430,12 @@ def fetch_filings_for_symbol(
         primary = primaries[i] if i < len(primaries) else ""
         if not accession or not primary:
             continue
-        # Resolve real PDFs for the first handful (extra SEC round-trips).
+        # Resolve package docs / real PDFs for the first handful (extra SEC round-trips).
         links = _filing_urls(
             cik,
             accession,
             primary,
-            resolve_pdf=len(filings) < 12,
+            resolve_package=len(filings) < 12,
         )
         filings.append(
             {
@@ -276,6 +453,7 @@ def fetch_filings_for_symbol(
                 "url_index": links["index"],
                 "url_viewer": links["viewer"],
                 "url_open": links["open"],
+                "documents": links.get("documents") or [],
                 "sec_company": f"https://www.sec.gov/edgar/browse/?CIK={cik}",
             }
         )
@@ -303,8 +481,8 @@ def save_filings(out_dir: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
-def _repair_filing_links(payload: dict[str, Any], *, resolve_pdf: bool = False) -> dict[str, Any]:
-    """Rewrite cached bad links to ix-viewer / real PDF / index."""
+def _repair_filing_links(payload: dict[str, Any], *, resolve_package: bool = False) -> dict[str, Any]:
+    """Rewrite cached bad links to ix-viewer / real PDF / package docs."""
     cik = payload.get("cik")
     if not cik:
         return payload
@@ -318,23 +496,26 @@ def _repair_filing_links(payload: dict[str, Any], *, resolve_pdf: bool = False) 
             primary = f.get("document") or ""
             if not accession:
                 continue
-            # Skip network PDF lookup on bulk repair unless asked.
+            need_docs = resolve_package or not (f.get("documents") or [])
             links = _filing_urls(
                 str(cik),
                 accession,
                 primary,
-                resolve_pdf=resolve_pdf and i < 8,
+                resolve_package=need_docs and i < 8,
             )
             for key in ("url_html", "url_raw", "url_pdf", "url_index", "url_viewer", "url_open"):
                 if f.get(key) != links.get(key):
                     f[key] = links.get(key)
                     changed = True
+            docs = links.get("documents") or []
+            if docs and f.get("documents") != docs:
+                f["documents"] = docs
+                changed = True
             # Drop invented .pdf that just swap .htm → .pdf
             pdf = str(f.get("url_pdf") or "")
             raw = str(f.get("url_raw") or f.get("document") or "")
             if pdf.endswith(".pdf") and (raw.endswith(".htm") or raw.endswith(".html")):
-                # If we didn't confirm via package listing, clear fake pdf.
-                if not resolve_pdf:
+                if not links.get("pdf"):
                     stem_pdf = pdf.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                     stem_raw = raw.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                     if stem_pdf == stem_raw:
@@ -344,6 +525,35 @@ def _repair_filing_links(payload: dict[str, Any], *, resolve_pdf: bool = False) 
     if changed:
         payload["_links_repaired"] = True
     return payload
+
+
+def find_filing(payload: dict[str, Any], accession: str) -> dict[str, Any] | None:
+    acc = (accession or "").strip()
+    if not acc:
+        return None
+    for bucket in ("filings", "annual", "quarterly", "material"):
+        for f in payload.get(bucket) or []:
+            if str(f.get("accession") or "") == acc:
+                return f
+    return None
+
+
+def ensure_filing_documents(payload: dict[str, Any], accession: str) -> dict[str, Any] | None:
+    """Ensure package document list is populated for one accession (mutates payload)."""
+    f = find_filing(payload, accession)
+    if not f:
+        return None
+    cik = payload.get("cik")
+    primary = f.get("document") or ""
+    if not cik or not primary:
+        return f
+    if f.get("documents"):
+        return f
+    links = _filing_urls(str(cik), accession, primary, resolve_package=True)
+    f["documents"] = links.get("documents") or []
+    for key in ("url_html", "url_raw", "url_pdf", "url_index", "url_viewer", "url_open"):
+        f[key] = links.get(key)
+    return f
 
 
 def load_filings(out_dir: Path, symbol: str) -> dict[str, Any] | None:

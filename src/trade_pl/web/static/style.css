@@ -722,6 +722,120 @@ tr.imp-critical .imp-badge {
   .filings-grid { grid-template-columns: 1fr; }
 }
 
+.doc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+.doc-chip {
+  font-size: 0.68rem;
+  font-family: var(--mono);
+  color: rgba(255,255,255,0.85);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  text-decoration: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-chip.primary {
+  border-color: rgba(110, 231, 183, 0.55);
+  color: #b8f5d8;
+}
+.doc-chip:hover { background: rgba(255,255,255,0.08); }
+
+.filing-reader { margin-top: 0.5rem; }
+.filing-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+.filing-head h1 { margin: 0 0 0.25rem; color: #fff; font-size: 1.45rem; }
+.filing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+.filing-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 1rem;
+  min-height: 70vh;
+}
+@media (max-width: 900px) {
+  .filing-layout { grid-template-columns: 1fr; }
+}
+.filing-docs {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.22);
+  padding: 0.75rem;
+  max-height: 75vh;
+  overflow: auto;
+}
+.filing-docs h2 { margin: 0 0 0.35rem; font-size: 0.95rem; color: #fff; }
+.doc-list { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.doc-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem;
+  align-items: start;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding: 0.4rem 0;
+}
+.doc-list li a:first-child {
+  text-decoration: none;
+  color: rgba(255,255,255,0.9);
+  min-width: 0;
+}
+.doc-list li.active a:first-child { color: #b8f5d8; }
+.doc-list li.primary .doc-name::after {
+  content: " · primary";
+  color: rgba(184, 245, 216, 0.8);
+  font-size: 0.7rem;
+}
+.doc-name {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+.doc-meta { display: block; font-size: 0.68rem; color: rgba(255,255,255,0.55); }
+.doc-ext {
+  color: rgba(255,255,255,0.55);
+  text-decoration: none;
+  padding: 0 0.2rem;
+}
+.filing-pane {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  min-height: 70vh;
+  overflow: hidden;
+}
+.filing-tip { margin: 0.6rem 0.75rem 0; }
+.filing-frame-wrap { flex: 1; min-height: 65vh; }
+.filing-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 65vh;
+  border: 0;
+  background: #fff;
+}
+.filing-empty {
+  padding: 2rem;
+  color: rgba(255,255,255,0.75);
+}
+
 .news-section { margin-top: 1.25rem; }
 .news-section h3 { color: #fff; margin: 0 0 0.5rem; }
 .news-stats {

@@ -177,8 +177,8 @@
       <h2>Official SEC reports</h2>
       <p class="muted small">
         10-K / 10-Q / 8-K via SEC EDGAR.
-        <strong>Open filing</strong> uses the SEC viewer (raw .htm is iXBRL/XML and looks empty).
-        <strong>PDF</strong> only appears when SEC actually filed a PDF.
+        <strong>Open</strong> loads the presented primary document and package exhibits in-app.
+        <strong>PDF</strong> only when SEC actually filed one.
       </p>
       {% if filings and filings.filings %}
       {% if filings.cik %}
@@ -193,11 +193,12 @@
             <li>
               <span class="imp-badge">{{ f.importance }}</span>
               <strong>{{ f.form }}</strong> · {{ f.filing_date }}
+              {% if f.document %}<div class="muted small">{{ f.document }}</div>{% endif %}
               <div class="news-foot">
-                <a class="btn" href="{{ f.url_open or f.url_html or f.url_viewer or f.url_index }}" target="_blank" rel="noopener">Open filing</a>
-                {% if f.url_viewer %} · <a href="{{ f.url_viewer }}" target="_blank" rel="noopener">SEC viewer</a>{% endif %}
-                {% if f.url_index %} · <a href="{{ f.url_index }}" target="_blank" rel="noopener">All docs</a>{% endif %}
-                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% else %}<span class="muted small"> · no PDF on file</span>{% endif %}
+                <a class="btn" href="/stock/{{ symbol }}/filing?accession={{ f.accession }}">Open</a>
+                {% if f.url_open %} · <a href="{{ f.url_open }}" target="_blank" rel="noopener">SEC</a>{% endif %}
+                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% endif %}
+                {% if f.documents %}<div class="doc-chips">{% for d in f.documents[:5] %}<a class="doc-chip{% if d.primary %} primary{% endif %}" href="/stock/{{ symbol }}/filing?accession={{ f.accession }}&doc={{ d.name|urlencode }}">{{ d.name }}</a>{% endfor %}</div>{% endif %}
               </div>
             </li>
             {% endfor %}
@@ -212,11 +213,12 @@
             <li>
               <span class="imp-badge">{{ f.importance }}</span>
               <strong>{{ f.form }}</strong> · {{ f.filing_date }}
+              {% if f.document %}<div class="muted small">{{ f.document }}</div>{% endif %}
               <div class="news-foot">
-                <a class="btn" href="{{ f.url_open or f.url_html or f.url_viewer or f.url_index }}" target="_blank" rel="noopener">Open filing</a>
-                {% if f.url_viewer %} · <a href="{{ f.url_viewer }}" target="_blank" rel="noopener">SEC viewer</a>{% endif %}
-                {% if f.url_index %} · <a href="{{ f.url_index }}" target="_blank" rel="noopener">All docs</a>{% endif %}
-                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% else %}<span class="muted small"> · no PDF on file</span>{% endif %}
+                <a class="btn" href="/stock/{{ symbol }}/filing?accession={{ f.accession }}">Open</a>
+                {% if f.url_open %} · <a href="{{ f.url_open }}" target="_blank" rel="noopener">SEC</a>{% endif %}
+                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% endif %}
+                {% if f.documents %}<div class="doc-chips">{% for d in f.documents[:5] %}<a class="doc-chip{% if d.primary %} primary{% endif %}" href="/stock/{{ symbol }}/filing?accession={{ f.accession }}&doc={{ d.name|urlencode }}">{{ d.name }}</a>{% endfor %}</div>{% endif %}
               </div>
             </li>
             {% endfor %}
@@ -232,11 +234,12 @@
               <span class="imp-badge">{{ f.importance }}</span>
               <strong>{{ f.form }}</strong> · {{ f.filing_date }}
               {% if f.description %}<div class="muted small">{{ f.description }}</div>{% endif %}
+              {% if f.document %}<div class="muted small">{{ f.document }}</div>{% endif %}
               <div class="news-foot">
-                <a class="btn" href="{{ f.url_open or f.url_html or f.url_viewer or f.url_index }}" target="_blank" rel="noopener">Open filing</a>
-                {% if f.url_viewer %} · <a href="{{ f.url_viewer }}" target="_blank" rel="noopener">SEC viewer</a>{% endif %}
-                {% if f.url_index %} · <a href="{{ f.url_index }}" target="_blank" rel="noopener">All docs</a>{% endif %}
-                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% else %}<span class="muted small"> · no PDF on file</span>{% endif %}
+                <a class="btn" href="/stock/{{ symbol }}/filing?accession={{ f.accession }}">Open</a>
+                {% if f.url_open %} · <a href="{{ f.url_open }}" target="_blank" rel="noopener">SEC</a>{% endif %}
+                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% endif %}
+                {% if f.documents %}<div class="doc-chips">{% for d in f.documents[:5] %}<a class="doc-chip{% if d.primary %} primary{% endif %}" href="/stock/{{ symbol }}/filing?accession={{ f.accession }}&doc={{ d.name|urlencode }}">{{ d.name }}</a>{% endfor %}</div>{% endif %}
               </div>
             </li>
             {% endfor %}

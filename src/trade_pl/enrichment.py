@@ -2,15 +2,28 @@ from __future__ import annotations
 
 import json
 import logging
+import random
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yfinance as yf
 
+from trade_pl.ingest import (
+    yahoo_is_throttle,
+    yahoo_note_ok,
+    yahoo_note_throttle,
+    yahoo_reset_auth,
+    yahoo_slot,
+)
+
 logger = logging.getLogger(__name__)
+
+# Quiet repeated 429 spam; one summary line at the end of enrich_many.
+_THROTTLE_HITS = 0
 
 
 def _fetch_news_search(symbol: str, limit: int = 12) -> list[dict[str, Any]]:
@@ -79,15 +92,59 @@ def _fast_info_dict(ticker: Any) -> dict[str, Any]:
         return {}
 
 
-def _history_quote(ticker: Any, lookback_days: int = 420) -> dict[str, Any]:
+def _yahoo_call(
+    label: str,
+    fn: Callable[[], Any],
+    *,
+    min_interval: float,
+    retries: int = 3,
+    default: Any = None,
+) -> Any:
+    """Run a Yahoo accessor with shared pacing + throttle backoff."""
+    global _THROTTLE_HITS
+    last_exc: BaseException | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            with yahoo_slot(min_interval):
+                out = fn()
+            yahoo_note_ok()
+            return out
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if yahoo_is_throttle(exc):
+                _THROTTLE_HITS += 1
+                yahoo_note_throttle()
+                yahoo_reset_auth()
+                sleep_s = min(12.0, 1.2 * attempt + random.uniform(0.3, 1.2))
+                logger.debug(
+                    "Yahoo throttle on %s (attempt %d/%d); sleep %.1fs",
+                    label,
+                    attempt,
+                    retries,
+                    sleep_s,
+                )
+                time.sleep(sleep_s)
+                continue
+            logger.debug("%s failed: %s", label, exc)
+            break
+    if last_exc is not None and yahoo_is_throttle(last_exc):
+        logger.debug("%s gave up after throttle: %s", label, last_exc)
+    elif last_exc is not None:
+        logger.debug("%s failed: %s", label, last_exc)
+    return default
+
+
+def _history_quote(ticker: Any, *, min_interval: float) -> dict[str, Any]:
     """Price + short-horizon returns from OHLCV history (works when info is thin)."""
     out: dict[str, Any] = {}
-    try:
-        hist = ticker.history(period="2y", auto_adjust=False, actions=False)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("history quote failed: %s", exc)
-        return out
-    if hist is None or hist.empty or "Close" not in hist.columns:
+    hist = _yahoo_call(
+        f"{getattr(ticker, 'ticker', '?')}.history",
+        lambda: ticker.history(period="2y", auto_adjust=False, actions=False),
+        min_interval=min_interval,
+        retries=3,
+        default=None,
+    )
+    if hist is None or getattr(hist, "empty", True) or "Close" not in getattr(hist, "columns", []):
         return out
     close = hist["Close"].dropna()
     if close.empty:
@@ -122,24 +179,38 @@ def _history_quote(ticker: Any, lookback_days: int = 420) -> dict[str, Any]:
     return out
 
 
-def fetch_profile(symbol: str) -> dict[str, Any]:
+def fetch_profile(symbol: str, *, min_interval: float = 0.75) -> dict[str, Any]:
     from trade_pl.search import normalize_symbol
 
     symbol = normalize_symbol(symbol)
     t = yf.Ticker(symbol)
-    info: dict[str, Any] = {}
-    try:
-        info = t.info or {}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("info failed %s: %s", symbol, exc)
-    fast = _fast_info_dict(t)
-    hist_q = _history_quote(t)
 
-    news_raw = []
-    try:
-        news_raw = t.news or []
-    except Exception:
-        news_raw = []
+    info_raw = _yahoo_call(
+        f"{symbol}.info",
+        lambda: t.info or {},
+        min_interval=min_interval,
+        retries=3,
+        default={},
+    )
+    info: dict[str, Any] = info_raw if isinstance(info_raw, dict) else {}
+
+    fast = _yahoo_call(
+        f"{symbol}.fast_info",
+        lambda: _fast_info_dict(t),
+        min_interval=min_interval * 0.6,
+        retries=2,
+        default={},
+    ) or {}
+
+    hist_q = _history_quote(t, min_interval=min_interval)
+
+    news_raw = _yahoo_call(
+        f"{symbol}.news",
+        lambda: t.news or [],
+        min_interval=min_interval * 0.6,
+        retries=2,
+        default=[],
+    ) or []
 
     news: list[dict[str, Any]] = []
     for item in news_raw[:12]:
@@ -165,12 +236,17 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
         news = _fetch_news_search(symbol)
 
     calendar: dict[str, Any] = {}
+    cal = _yahoo_call(
+        f"{symbol}.calendar",
+        lambda: t.calendar,
+        min_interval=min_interval * 0.5,
+        retries=2,
+        default=None,
+    )
     try:
-        cal = t.calendar
         if isinstance(cal, dict):
             calendar = {str(k): (str(v) if not isinstance(v, (list, dict)) else v) for k, v in cal.items()}
         elif cal is not None:
-            # pandas Series / DataFrame-ish
             try:
                 calendar = {str(k): str(v) for k, v in dict(cal).items()}
             except Exception:
@@ -179,19 +255,40 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
         calendar = {}
 
     earnings_dates: list[dict[str, Any]] = []
+    ed = _yahoo_call(
+        f"{symbol}.earnings_dates",
+        lambda: t.earnings_dates,
+        min_interval=min_interval * 0.5,
+        retries=2,
+        default=None,
+    )
     try:
-        ed = t.earnings_dates
         if ed is not None and hasattr(ed, "reset_index"):
             tmp = ed.reset_index().head(8)
             for _, row in tmp.iterrows():
-                earnings_dates.append({k: (None if (isinstance(v, float) and v != v) else (str(v) if not isinstance(v, (int, float)) else v)) for k, v in row.to_dict().items()})
+                earnings_dates.append(
+                    {
+                        k: (
+                            None
+                            if (isinstance(v, float) and v != v)
+                            else (str(v) if not isinstance(v, (int, float)) else v)
+                        )
+                        for k, v in row.to_dict().items()
+                    }
+                )
     except Exception:
         earnings_dates = []
 
     financials: dict[str, Any] = {"income": [], "balance": [], "cashflow": []}
     try:
-        inc = t.income_stmt
-        if inc is not None and not inc.empty:
+        inc = _yahoo_call(
+            f"{symbol}.income_stmt",
+            lambda: t.income_stmt,
+            min_interval=min_interval,
+            retries=2,
+            default=None,
+        )
+        if inc is not None and not getattr(inc, "empty", True):
             cols = list(inc.columns)[:4]
             for col in cols:
                 financials["income"].append(
@@ -207,8 +304,14 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
     except Exception:
         pass
     try:
-        bal = t.balance_sheet
-        if bal is not None and not bal.empty:
+        bal = _yahoo_call(
+            f"{symbol}.balance_sheet",
+            lambda: t.balance_sheet,
+            min_interval=min_interval,
+            retries=2,
+            default=None,
+        )
+        if bal is not None and not getattr(bal, "empty", True):
             cols = list(bal.columns)[:4]
             for col in cols:
                 financials["balance"].append(
@@ -226,8 +329,14 @@ def fetch_profile(symbol: str) -> dict[str, Any]:
     except Exception:
         pass
     try:
-        cf = t.cashflow
-        if cf is not None and not cf.empty:
+        cf = _yahoo_call(
+            f"{symbol}.cashflow",
+            lambda: t.cashflow,
+            min_interval=min_interval,
+            retries=2,
+            default=None,
+        )
+        if cf is not None and not getattr(cf, "empty", True):
             cols = list(cf.columns)[:4]
             for col in cols:
                 financials["cashflow"].append(
@@ -338,29 +447,115 @@ def profile_needs_refresh(profile: dict[str, Any] | None) -> bool:
     return False
 
 
+def profile_is_fresh(
+    profile: dict[str, Any] | None,
+    path: Path | None = None,
+    *,
+    max_age_hours: float = 18.0,
+) -> bool:
+    """Skip Yahoo re-fetch when we already have a usable recent profile."""
+    if profile_needs_refresh(profile):
+        return False
+    if path is not None and path.exists() and max_age_hours > 0:
+        age_h = (time.time() - path.stat().st_mtime) / 3600.0
+        if age_h <= max_age_hours:
+            return True
+    as_of = str((profile or {}).get("as_of") or "")[:10]
+    return as_of == date.today().isoformat()
+
+
 def enrich_many(
     symbols: list[str],
     out_dir: Path,
-    workers: int = 4,
+    workers: int = 2,
+    *,
+    min_interval: float = 0.75,
+    max_age_hours: float = 18.0,
+    force: bool = False,
 ) -> list[str]:
+    """Enrich symbols with Yahoo pacing. Reuses fresh cache to avoid 429 storms."""
+    global _THROTTLE_HITS
+    _THROTTLE_HITS = 0
     out_dir.mkdir(parents=True, exist_ok=True)
+    workers = max(1, min(int(workers), 3))
     done: list[str] = []
+    skipped = 0
+    failed = 0
+    total = len(symbols)
 
-    def _one(sym: str) -> str | None:
+    logger.info(
+        "Enrich starting: %d symbols, workers=%d, pace≈%.2fs, skip_fresh≤%.0fh",
+        total,
+        workers,
+        min_interval,
+        max_age_hours,
+    )
+
+    def _one(sym: str) -> tuple[str, str]:
+        """Return (symbol, status) where status is saved|skipped|failed."""
+        path = profile_path(out_dir, sym)
+        if not force:
+            existing = load_profile(out_dir, sym)
+            if profile_is_fresh(existing, path, max_age_hours=max_age_hours):
+                return sym, "skipped"
         try:
-            profile = fetch_profile(sym)
+            profile = fetch_profile(sym, min_interval=min_interval)
+            # Keep prior good fields if this pass was heavily throttled.
+            if profile_needs_refresh(profile) and path.exists():
+                prior = load_profile(out_dir, sym)
+                if prior and not profile_needs_refresh(prior):
+                    for key in ("name", "sector", "industry", "summary", "news", "financials", "calendar"):
+                        if not profile.get(key) and prior.get(key):
+                            profile[key] = prior[key]
+                    if profile.get("last_price") in (None, "", 0) and prior.get("last_price"):
+                        profile["last_price"] = prior["last_price"]
             save_profile(out_dir, profile)
-            return sym
+            return sym, "saved"
         except Exception as exc:  # noqa: BLE001
-            logger.warning("enrich failed %s: %s", sym, exc)
-            return None
+            if yahoo_is_throttle(exc):
+                yahoo_note_throttle()
+                logger.debug("enrich throttle %s: %s", sym, exc)
+            else:
+                logger.warning("enrich failed %s: %s", sym, exc)
+            return sym, "failed"
 
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futs = [pool.submit(_one, s) for s in symbols]
+        finished = 0
         for fut in as_completed(futs):
-            sym = fut.result()
-            if sym:
+            sym, status = fut.result()
+            finished += 1
+            if status == "saved":
                 done.append(sym)
+            elif status == "skipped":
+                skipped += 1
+                done.append(sym)
+            else:
+                failed += 1
+            if finished % 50 == 0 or finished == total:
+                logger.info(
+                    "Enrich progress %d/%d  ok=%d skip=%d fail=%d (throttle_hits=%d)",
+                    finished,
+                    total,
+                    len(done) - skipped,
+                    skipped,
+                    failed,
+                    _THROTTLE_HITS,
+                )
+
+    logger.info(
+        "Enrich done ok=%d skipped_fresh=%d failed=%d throttle_hits=%d",
+        len(done) - skipped,
+        skipped,
+        failed,
+        _THROTTLE_HITS,
+    )
+    if _THROTTLE_HITS:
+        logger.warning(
+            "Yahoo rate-limited enrichment %d times — slowed automatically; "
+            "re-run later or raise enrich_min_interval if this persists.",
+            _THROTTLE_HITS,
+        )
     return done
 
 
