@@ -175,7 +175,11 @@
 
     <div style="margin-top:1.2rem" id="sec-filings">
       <h2>Official SEC reports</h2>
-      <p class="muted small">10-K annual, 10-Q quarterly, 8-K material events — links to SEC EDGAR (PDF when available).</p>
+      <p class="muted small">
+        10-K / 10-Q / 8-K via SEC EDGAR.
+        <strong>Open filing</strong> uses the SEC viewer (raw .htm is iXBRL/XML and looks empty).
+        <strong>PDF</strong> only appears when SEC actually filed a PDF.
+      </p>
       {% if filings and filings.filings %}
       {% if filings.cik %}
       <p class="muted small">CIK {{ filings.cik }} · <a href="https://www.sec.gov/edgar/browse/?CIK={{ filings.cik }}" target="_blank" rel="noopener">SEC company page</a></p>
@@ -190,8 +194,10 @@
               <span class="imp-badge">{{ f.importance }}</span>
               <strong>{{ f.form }}</strong> · {{ f.filing_date }}
               <div class="news-foot">
-                <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF/doc</a>
-                {% if f.url_html %}<a href="{{ f.url_html }}" target="_blank" rel="noopener">HTML</a>{% endif %}
+                <a class="btn" href="{{ f.url_open or f.url_html or f.url_viewer or f.url_index }}" target="_blank" rel="noopener">Open filing</a>
+                {% if f.url_viewer %} · <a href="{{ f.url_viewer }}" target="_blank" rel="noopener">SEC viewer</a>{% endif %}
+                {% if f.url_index %} · <a href="{{ f.url_index }}" target="_blank" rel="noopener">All docs</a>{% endif %}
+                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% else %}<span class="muted small"> · no PDF on file</span>{% endif %}
               </div>
             </li>
             {% endfor %}
@@ -207,8 +213,10 @@
               <span class="imp-badge">{{ f.importance }}</span>
               <strong>{{ f.form }}</strong> · {{ f.filing_date }}
               <div class="news-foot">
-                <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF/doc</a>
-                {% if f.url_html %}<a href="{{ f.url_html }}" target="_blank" rel="noopener">HTML</a>{% endif %}
+                <a class="btn" href="{{ f.url_open or f.url_html or f.url_viewer or f.url_index }}" target="_blank" rel="noopener">Open filing</a>
+                {% if f.url_viewer %} · <a href="{{ f.url_viewer }}" target="_blank" rel="noopener">SEC viewer</a>{% endif %}
+                {% if f.url_index %} · <a href="{{ f.url_index }}" target="_blank" rel="noopener">All docs</a>{% endif %}
+                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% else %}<span class="muted small"> · no PDF on file</span>{% endif %}
               </div>
             </li>
             {% endfor %}
@@ -225,7 +233,10 @@
               <strong>{{ f.form }}</strong> · {{ f.filing_date }}
               {% if f.description %}<div class="muted small">{{ f.description }}</div>{% endif %}
               <div class="news-foot">
-                <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF/doc</a>
+                <a class="btn" href="{{ f.url_open or f.url_html or f.url_viewer or f.url_index }}" target="_blank" rel="noopener">Open filing</a>
+                {% if f.url_viewer %} · <a href="{{ f.url_viewer }}" target="_blank" rel="noopener">SEC viewer</a>{% endif %}
+                {% if f.url_index %} · <a href="{{ f.url_index }}" target="_blank" rel="noopener">All docs</a>{% endif %}
+                {% if f.url_pdf %} · <a href="{{ f.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% else %}<span class="muted small"> · no PDF on file</span>{% endif %}
               </div>
             </li>
             {% endfor %}
@@ -359,10 +370,11 @@
     </div>
     {% endif %}
 
-    <div class="tabs">
+    <div class="tabs" style="margin-top:1.25rem">
       <a class="{% if chart == 'dashboard' %}active{% endif %}" href="/stock/{{ symbol }}?chart=dashboard">Dashboard</a>
       <a class="{% if chart == 'drawdown' %}active{% endif %}" href="/stock/{{ symbol }}?chart=drawdown">Drawdown</a>
       <a class="{% if chart == 'forecast' %}active{% endif %}" href="/stock/{{ symbol }}?chart=forecast">5y forecast</a>
+      <a href="/stock/{{ symbol }}?refresh=1&chart={{ chart }}">Rebuild charts</a>
       <a href="/">← Leaderboard</a>
     </div>
 
@@ -370,8 +382,20 @@
       <div class="iframe-wrap">
         <iframe src="/plots/{{ symbol }}/{{ chart }}.html" title="{{ symbol }} {{ chart }}" style="{% if chart == 'forecast' %}height:560px{% endif %}"></iframe>
       </div>
+      {% if chart_status and chart_status.bars %}
+      <p class="muted small" style="margin-top:0.5rem">
+        History bars: {{ chart_status.bars }}
+        · dashboard {% if has_dashboard %}ready{% else %}missing{% endif %}
+        · drawdown {% if has_drawdown %}ready{% else %}missing{% endif %}
+        · forecast {% if has_forecast %}ready{% else %}missing{% endif %}
+      </p>
+      {% endif %}
     {% else %}
-      <p class="muted" style="margin-top:1rem">No plot yet. Open <strong>5y forecast</strong> to generate on demand, or re-run the pipeline for top names.</p>
+      <p class="muted" style="margin-top:1rem">
+        Could not build charts for {{ symbol }}
+        {% if chart_status and chart_status.error %} ({{ chart_status.error }}){% endif %}.
+        <a href="/stock/{{ symbol }}?refresh=1&chart=dashboard">Retry download + plot</a>
+      </p>
     {% endif %}
   </div>
 {% endblock %}

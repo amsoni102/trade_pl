@@ -7,10 +7,9 @@ Uses the public data.sec.gov API. Not every non-US ticker has a CIK.
 
 import json
 import logging
-import re
 import time
 import urllib.request
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -84,17 +83,113 @@ def _doc_url(cik: str, accession: str, primary: str) -> str:
     return f"https://www.sec.gov/Archives/edgar/data/{cik_n}/{acc}/{primary}"
 
 
-def _pdf_or_html_url(cik: str, accession: str, primary: str) -> dict[str, str]:
-    """Prefer PDF sibling when primary is HTML; always expose HTML filing."""
-    html = _doc_url(cik, accession, primary)
-    pdf = None
-    if primary.lower().endswith(".htm") or primary.lower().endswith(".html"):
-        stem = re.sub(r"\.(html?)$", "", primary, flags=re.I)
-        pdf = _doc_url(cik, accession, f"{stem}.pdf")
-    elif primary.lower().endswith(".pdf"):
-        pdf = html
-        html = html  # already pdf
-    return {"html": html, "pdf": pdf or html}
+def _index_url(cik: str, accession: str) -> str:
+    """EDGAR filing index — lists every exhibit (real PDFs live here when they exist)."""
+    acc = accession.replace("-", "")
+    cik_n = str(int(cik))
+    # Keep dashed accession in the index filename (SEC convention).
+    return f"https://www.sec.gov/Archives/edgar/data/{cik_n}/{acc}/{accession}-index.htm"
+
+
+def _viewer_url(cik: str, accession: str) -> str:
+    return (
+        "https://www.sec.gov/cgi-bin/viewer?action=view"
+        f"&cik={int(cik)}&accession_number={accession}&xbrl_type=v"
+    )
+
+
+def _ix_url(cik: str, accession: str, primary: str) -> str:
+    """Inline XBRL viewer — readable rendering of modern .htm filings (raw .htm is XML-ish)."""
+    acc = accession.replace("-", "")
+    cik_n = str(int(cik))
+    path = f"/Archives/edgar/data/{cik_n}/{acc}/{primary}"
+    return f"https://www.sec.gov/ix?doc={path}"
+
+
+def _list_package_files(cik: str, accession: str) -> list[dict[str, Any]]:
+    """Files in the filing package via EDGAR index.json."""
+    acc = accession.replace("-", "")
+    cik_n = str(int(cik))
+    url = f"https://www.sec.gov/Archives/edgar/data/{cik_n}/{acc}/index.json"
+    try:
+        time.sleep(0.08)
+        data = _http_get_json(url)
+        items = ((data or {}).get("directory") or {}).get("item") or []
+        return items if isinstance(items, list) else []
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("index.json failed %s %s: %s", cik, accession, exc)
+        return []
+
+
+def _pick_real_pdf(items: list[dict[str, Any]], primary: str) -> str | None:
+    """Return a real PDF filename from the package, if any (never invent one)."""
+    pdfs: list[tuple[int, str]] = []
+    for it in items:
+        name = str(it.get("name") or "")
+        if not name.lower().endswith(".pdf"):
+            continue
+        try:
+            size = int(str(it.get("size") or "0") or 0)
+        except Exception:
+            size = 0
+        pdfs.append((size, name))
+    if not pdfs:
+        return None
+    stem = primary.rsplit(".", 1)[0].lower() if primary else ""
+    # Prefer a PDF whose name matches the primary document stem.
+    for size, name in sorted(pdfs, key=lambda x: -x[0]):
+        if stem and stem in name.lower():
+            return name
+    # Otherwise largest PDF (likely the full filing / press kit).
+    pdfs.sort(key=lambda x: -x[0])
+    return pdfs[0][1]
+
+
+def _filing_urls(
+    cik: str,
+    accession: str,
+    primary: str,
+    *,
+    resolve_pdf: bool = False,
+) -> dict[str, str | None]:
+    """Build working EDGAR links.
+
+    Modern 10-K/10-Q primaries are iXBRL ``.htm`` files. Opening them directly
+    often shows raw XML / empty Adobe tabs. Use the SEC **ix** viewer instead.
+    Only expose ``url_pdf`` when a real ``.pdf`` exists in the filing package.
+    """
+    primary = (primary or "").strip()
+    doc = _doc_url(cik, accession, primary) if primary else None
+    index = _index_url(cik, accession)
+    viewer = _viewer_url(cik, accession)
+    is_pdf = primary.lower().endswith(".pdf")
+    is_html = primary.lower().endswith((".htm", ".html", ".xhtml"))
+
+    pdf_name: str | None = primary if is_pdf else None
+    if resolve_pdf and not pdf_name:
+        items = _list_package_files(cik, accession)
+        pdf_name = _pick_real_pdf(items, primary)
+
+    pdf_url = _doc_url(cik, accession, pdf_name) if pdf_name else None
+    ix = _ix_url(cik, accession, primary) if (primary and is_html) else None
+
+    # Best human-readable open target:
+    # 1) real PDF if present  2) iXBRL viewer  3) interactive viewer  4) index
+    if pdf_url:
+        open_url = pdf_url
+    elif ix:
+        open_url = ix
+    else:
+        open_url = viewer if accession else (doc or index)
+
+    return {
+        "html": ix or doc or index,
+        "raw": doc,
+        "pdf": pdf_url,
+        "index": index,
+        "viewer": viewer,
+        "open": open_url,
+    }
 
 
 def fetch_filings_for_symbol(
@@ -158,7 +253,13 @@ def fetch_filings_for_symbol(
         primary = primaries[i] if i < len(primaries) else ""
         if not accession or not primary:
             continue
-        links = _pdf_or_html_url(cik, accession, primary)
+        # Resolve real PDFs for the first handful (extra SEC round-trips).
+        links = _filing_urls(
+            cik,
+            accession,
+            primary,
+            resolve_pdf=len(filings) < 12,
+        )
         filings.append(
             {
                 "form": form,
@@ -170,7 +271,11 @@ def fetch_filings_for_symbol(
                 "accession": accession,
                 "document": primary,
                 "url_html": links["html"],
+                "url_raw": links["raw"],
                 "url_pdf": links["pdf"],
+                "url_index": links["index"],
+                "url_viewer": links["viewer"],
+                "url_open": links["open"],
                 "sec_company": f"https://www.sec.gov/edgar/browse/?CIK={cik}",
             }
         )
@@ -198,11 +303,61 @@ def save_filings(out_dir: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
+def _repair_filing_links(payload: dict[str, Any], *, resolve_pdf: bool = False) -> dict[str, Any]:
+    """Rewrite cached bad links to ix-viewer / real PDF / index."""
+    cik = payload.get("cik")
+    if not cik:
+        return payload
+    changed = False
+    for bucket in ("filings", "annual", "quarterly", "material"):
+        rows = payload.get(bucket) or []
+        if not isinstance(rows, list):
+            continue
+        for i, f in enumerate(rows):
+            accession = f.get("accession") or ""
+            primary = f.get("document") or ""
+            if not accession:
+                continue
+            # Skip network PDF lookup on bulk repair unless asked.
+            links = _filing_urls(
+                str(cik),
+                accession,
+                primary,
+                resolve_pdf=resolve_pdf and i < 8,
+            )
+            for key in ("url_html", "url_raw", "url_pdf", "url_index", "url_viewer", "url_open"):
+                if f.get(key) != links.get(key):
+                    f[key] = links.get(key)
+                    changed = True
+            # Drop invented .pdf that just swap .htm → .pdf
+            pdf = str(f.get("url_pdf") or "")
+            raw = str(f.get("url_raw") or f.get("document") or "")
+            if pdf.endswith(".pdf") and (raw.endswith(".htm") or raw.endswith(".html")):
+                # If we didn't confirm via package listing, clear fake pdf.
+                if not resolve_pdf:
+                    stem_pdf = pdf.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                    stem_raw = raw.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                    if stem_pdf == stem_raw:
+                        f["url_pdf"] = None
+                        f["url_open"] = links.get("open")
+                        changed = True
+    if changed:
+        payload["_links_repaired"] = True
+    return payload
+
+
 def load_filings(out_dir: Path, symbol: str) -> dict[str, Any] | None:
     path = out_dir / f"{symbol.upper().replace('.', '-')}.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    repaired = _repair_filing_links(payload)
+    if repaired.get("_links_repaired"):
+        try:
+            path.write_text(json.dumps(repaired, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+    return repaired
 
 
 def fetch_filings_many(

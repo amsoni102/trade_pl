@@ -29,10 +29,18 @@ def _paths() -> dict[str, Path]:
         "reports": Path(cfg["paths"]["reports"]),
         "plots": Path(cfg["paths"]["plots"]),
         "metrics": Path(cfg["paths"]["data_metrics"]),
+        "raw": Path(cfg["paths"].get("data_raw", ROOT / "data" / "raw")),
         "enrichment": Path(cfg["paths"].get("data_enrichment", ROOT / "data" / "enrichment")),
         "search": Path(cfg["paths"].get("data_search", ROOT / "data" / "search")),
         "filings": Path(cfg["paths"].get("data_filings", ROOT / "data" / "filings")),
     }
+
+
+def _chart_lookback_days() -> int:
+    from trade_pl.plots import DEFAULT_CHART_LOOKBACK_DAYS
+
+    cfg = load_config()
+    return max(int(cfg.get("lookback_days", 420)), DEFAULT_CHART_LOOKBACK_DAYS)
 
 
 def _leaderboard_rows() -> list[dict[str, Any]]:
@@ -575,27 +583,28 @@ def stock_detail(
         matched = df[df["symbol"].astype(str).map(normalize_symbol) == symbol]
         if not matched.empty:
             row = matched.iloc[0].to_dict()
-    plots_dir = _paths()["plots"]
-    metrics_dir = _paths()["metrics"]
+    paths = _paths()
+    plots_dir = paths["plots"]
+    metrics_dir = paths["metrics"]
+    raw_dir = paths["raw"]
     chart_path = plots_dir / symbol / f"{chart}.html"
 
-    # Lazy-build full chart pack (dashboard / drawdown / 5y forecast) if any are missing
-    needed = ("dashboard.html", "drawdown.html", "forecast.html")
-    if refresh or any(not (plots_dir / symbol / name).exists() for name in needed):
-        try:
-            from trade_pl.plots import plot_symbol
+    # Always ensure multi-year dashboard / drawdown / forecast for this ticker.
+    chart_status: dict[str, Any] = {"ok": False}
+    try:
+        from trade_pl.plots import ensure_symbol_charts
 
-            plot_symbol(symbol, metrics_dir, plots_dir)
-        except Exception:
-            # Fall back to forecast-only if full pack fails
-            if chart == "forecast" and not chart_path.exists():
-                try:
-                    from trade_pl.forecast import forecast_symbol
-
-                    forecast_symbol(symbol, metrics_dir, plots_dir)
-                except Exception:
-                    pass
-        chart_path = plots_dir / symbol / f"{chart}.html"
+        chart_status = ensure_symbol_charts(
+            symbol,
+            raw_dir=raw_dir,
+            metrics_dir=metrics_dir,
+            plots_dir=plots_dir,
+            lookback_days=_chart_lookback_days(),
+            force=bool(refresh),
+        )
+    except Exception as exc:  # noqa: BLE001
+        chart_status = {"ok": False, "error": str(exc)}
+    chart_path = plots_dir / symbol / f"{chart}.html"
 
     forecast_summary = None
     fjson = plots_dir / symbol / "forecast.json"
@@ -605,7 +614,7 @@ def stock_detail(
         except Exception:
             forecast_summary = None
 
-    enrich_dir = _paths()["enrichment"]
+    enrich_dir = paths["enrichment"]
     profile = load_profile(enrich_dir, symbol)
     # Always ensure quote + financials for searched / off-board names.
     from trade_pl.enrichment import fetch_profile, profile_needs_refresh
@@ -672,7 +681,18 @@ def stock_detail(
 
         filings_dir = _paths()["filings"]
         filings = load_filings(filings_dir, symbol)
-        if refresh or filings is None or not (filings.get("filings") or filings.get("note")):
+        needs_filings = (
+            refresh
+            or filings is None
+            or not (filings.get("filings") or filings.get("note"))
+            # Old cache used fake .pdf / raw .htm links that open as empty XML.
+            or any(
+                str((f or {}).get("url_open") or "").endswith((".htm", ".html"))
+                and "ix?doc=" not in str((f or {}).get("url_open") or "")
+                for f in (filings.get("filings") or [])[:3]
+            )
+        )
+        if needs_filings:
             cik_map = load_ticker_cik_map(ROOT / "data" / "sec_cik_map.json")
             filings = fetch_filings_for_symbol(symbol, cik_map)
             save_filings(filings_dir, filings)
@@ -687,6 +707,10 @@ def stock_detail(
             "row": row,
             "chart": chart,
             "has_chart": chart_path.exists(),
+            "has_dashboard": (plots_dir / symbol / "dashboard.html").exists(),
+            "has_drawdown": (plots_dir / symbol / "drawdown.html").exists(),
+            "has_forecast": (plots_dir / symbol / "forecast.html").exists(),
+            "chart_status": chart_status,
             "profile": profile,
             "forecast": forecast_summary,
             "filings": filings,

@@ -102,8 +102,9 @@
               <td><a class="sym" href="/stock/{{ e.symbol }}">{{ e.symbol }}</a></td>
               <td>{{ e.form or e.type }}</td>
               <td>
-                {% if e.url %}<a href="{{ e.url }}" target="_blank" rel="noopener">PDF/doc</a>{% endif %}
-                {% if e.url_html and e.url_html != e.url %} · <a href="{{ e.url_html }}" target="_blank" rel="noopener">HTML</a>{% endif %}
+                {% if e.url %}<a class="btn" href="{{ e.url }}" target="_blank" rel="noopener">Open filing</a>{% endif %}
+                {% if e.url_index %} · <a href="{{ e.url_index }}" target="_blank" rel="noopener">All docs</a>{% endif %}
+                {% if e.url_pdf %} · <a href="{{ e.url_pdf }}" target="_blank" rel="noopener">PDF</a>{% endif %}
               </td>
             </tr>
             {% endfor %}

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,12 +10,37 @@ from plotly.subplots import make_subplots
 
 from trade_pl.forecast import forecast_symbol
 
+logger = logging.getLogger(__name__)
+
+# ~5.5 calendar years so dashboards cover multi-year history.
+DEFAULT_CHART_LOOKBACK_DAYS = 2000
+
 
 def _load_series(metrics_dir: Path, symbol: str) -> pd.DataFrame | None:
     path = metrics_dir / f"{symbol}_series.parquet"
     if not path.exists():
         return None
     return pd.read_parquet(path)
+
+
+def _series_path(metrics_dir: Path, symbol: str) -> Path:
+    return metrics_dir / f"{symbol}_series.parquet"
+
+
+def _chart_paths(plots_dir: Path, symbol: str) -> dict[str, Path]:
+    out = plots_dir / symbol
+    return {
+        "dir": out,
+        "dashboard": out / "dashboard.html",
+        "drawdown": out / "drawdown.html",
+        "forecast": out / "forecast.html",
+        "forecast_json": out / "forecast.json",
+    }
+
+
+def charts_ready(plots_dir: Path, symbol: str) -> bool:
+    paths = _chart_paths(plots_dir, symbol)
+    return paths["dashboard"].exists() and paths["drawdown"].exists()
 
 
 def make_dashboard(series: pd.DataFrame, symbol: str) -> go.Figure:
@@ -98,19 +125,135 @@ def plot_symbol(symbol: str, metrics_dir: Path, plots_dir: Path) -> Path | None:
     series = _load_series(metrics_dir, symbol)
     if series is None or series.empty:
         return None
-    out = plots_dir / symbol
-    out.mkdir(parents=True, exist_ok=True)
+    paths = _chart_paths(plots_dir, symbol)
+    paths["dir"].mkdir(parents=True, exist_ok=True)
     dash = make_dashboard(series, symbol)
-    dash.write_html(out / "dashboard.html", include_plotlyjs="cdn", full_html=True)
+    dash.write_html(paths["dashboard"], include_plotlyjs="cdn", full_html=True)
     dd = make_drawdown(series, symbol)
-    dd.write_html(out / "drawdown.html", include_plotlyjs="cdn", full_html=True)
+    dd.write_html(paths["drawdown"], include_plotlyjs="cdn", full_html=True)
     forecast_symbol(symbol, metrics_dir, plots_dir)
     charts = ["dashboard.html", "drawdown.html", "forecast.html"]
-    (out / "meta.json").write_text(
+    (paths["dir"] / "meta.json").write_text(
         '{"symbol":"%s","charts":%s}' % (symbol, __import__("json").dumps(charts)),
         encoding="utf-8",
     )
-    return out
+    return paths["dir"]
+
+
+def ensure_metrics_series(
+    symbol: str,
+    *,
+    raw_dir: Path,
+    metrics_dir: Path,
+    lookback_days: int = DEFAULT_CHART_LOOKBACK_DAYS,
+    force_ingest: bool = False,
+) -> pd.DataFrame | None:
+    """Download OHLCV if needed, compute indicator series, return it."""
+    from trade_pl.ingest import ingest_one, ticker_path
+    from trade_pl.metrics import compute_series
+
+    raw_path = ticker_path(raw_dir, symbol)
+    if force_ingest or not raw_path.exists() or raw_path.stat().st_size < 100:
+        ok_sym, success, msg = ingest_one(
+            symbol,
+            raw_dir,
+            lookback_days=lookback_days,
+            force=force_ingest or not raw_path.exists(),
+            min_interval=0.25,
+        )
+        if not success and not raw_path.exists():
+            logger.warning("cannot build charts for %s: ingest failed (%s)", symbol, msg)
+            return None
+
+    if not raw_path.exists():
+        return None
+
+    try:
+        df = pd.read_parquet(raw_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("read raw failed %s: %s", symbol, exc)
+        return None
+    if df is None or df.empty or len(df) < 30:
+        return None
+
+    series = compute_series(df)
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    series.to_parquet(_series_path(metrics_dir, symbol), index=False)
+    return series
+
+
+def ensure_symbol_charts(
+    symbol: str,
+    *,
+    raw_dir: Path,
+    metrics_dir: Path,
+    plots_dir: Path,
+    lookback_days: int = DEFAULT_CHART_LOOKBACK_DAYS,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Guarantee dashboard + drawdown (+ forecast when possible) for any ticker.
+
+    Used by the website so searched / off-board names get the same multi-year
+    charts as pipeline top-K names.
+    """
+    paths = _chart_paths(plots_dir, symbol)
+    ready = charts_ready(plots_dir, symbol) and paths["forecast"].exists()
+    if ready and not force:
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "cached": True,
+            "dashboard": paths["dashboard"].exists(),
+            "drawdown": paths["drawdown"].exists(),
+            "forecast": paths["forecast"].exists(),
+        }
+
+    series = _load_series(metrics_dir, symbol)
+    span_days = 0
+    if series is not None and not series.empty and "date" in series.columns:
+        try:
+            span_days = int((pd.to_datetime(series["date"]).max() - pd.to_datetime(series["date"]).min()).days)
+        except Exception:
+            span_days = 0
+    # Rebuild when missing, charts absent, or history shorter than ~3 years.
+    needs_series = (
+        force
+        or series is None
+        or series.empty
+        or len(series) < 250
+        or span_days < 900
+        or not charts_ready(plots_dir, symbol)
+    )
+    if needs_series:
+        series = ensure_metrics_series(
+            symbol,
+            raw_dir=raw_dir,
+            metrics_dir=metrics_dir,
+            lookback_days=lookback_days,
+            # Re-download when the cached history is too short for multi-year charts.
+            force_ingest=force or span_days < 900 or (series is not None and len(series) < 250),
+        )
+
+    if series is None or series.empty:
+        return {
+            "ok": False,
+            "symbol": symbol,
+            "error": "no-price-history",
+            "dashboard": False,
+            "drawdown": False,
+            "forecast": False,
+        }
+
+    out = plot_symbol(symbol, metrics_dir, plots_dir)
+    return {
+        "ok": out is not None,
+        "symbol": symbol,
+        "cached": False,
+        "bars": int(len(series)),
+        "dashboard": paths["dashboard"].exists(),
+        "drawdown": paths["drawdown"].exists(),
+        "forecast": paths["forecast"].exists(),
+    }
 
 
 def plot_many(
