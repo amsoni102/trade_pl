@@ -190,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             workers=int(cfg.get("enrich_workers", 2)),
             min_interval=float(cfg.get("enrich_min_interval", 0.75)),
             max_age_hours=float(cfg.get("enrich_max_age_hours", 18)),
+            fetch_limit=int(cfg.get("enrich_fetch_limit", 60)),
         )
 
     manifest = {

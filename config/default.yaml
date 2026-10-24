@@ -31,6 +31,8 @@ enrich_workers: 2
 enrich_min_interval: 0.85
 # Reuse usable enrichment JSON newer than this (hours) to avoid Yahoo 429 storms.
 enrich_max_age_hours: 18
+# Cap live Yahoo refreshes per pipeline run (rest fill on ticker open).
+enrich_fetch_limit: 60
 
 paths:
   data_raw: data/raw

@@ -437,7 +437,7 @@ def fetch_profile(symbol: str, *, min_interval: float = 0.75) -> dict[str, Any]:
 
 
 def profile_needs_refresh(profile: dict[str, Any] | None) -> bool:
-    """True when cached profile is missing critical quote fields."""
+    """True when cached profile is missing critical quote fields (ticker page)."""
     if not profile:
         return True
     if profile.get("last_price") in (None, "", 0):
@@ -447,14 +447,25 @@ def profile_needs_refresh(profile: dict[str, Any] | None) -> bool:
     return False
 
 
+def _has_usable_quote(profile: dict[str, Any] | None) -> bool:
+    """Batch pipeline: a price is enough to skip; deep fields fill on ticker open."""
+    if not profile:
+        return False
+    return profile.get("last_price") not in (None, "", 0)
+
+
 def profile_is_fresh(
     profile: dict[str, Any] | None,
     path: Path | None = None,
     *,
     max_age_hours: float = 18.0,
+    require_deep: bool = False,
 ) -> bool:
     """Skip Yahoo re-fetch when we already have a usable recent profile."""
-    if profile_needs_refresh(profile):
+    if require_deep:
+        if profile_needs_refresh(profile):
+            return False
+    elif not _has_usable_quote(profile):
         return False
     if path is not None and path.exists() and max_age_hours > 0:
         age_h = (time.time() - path.stat().st_mtime) / 3600.0
@@ -471,44 +482,77 @@ def enrich_many(
     *,
     min_interval: float = 0.75,
     max_age_hours: float = 18.0,
+    fetch_limit: int = 60,
     force: bool = False,
 ) -> list[str]:
-    """Enrich symbols with Yahoo pacing. Reuses fresh cache to avoid 429 storms."""
+    """Enrich symbols with Yahoo pacing. Reuses fresh cache to avoid 429 storms.
+
+    Batch runs skip any recent profile that already has a price (news/financials
+    can fill on ticker open). At most ``fetch_limit`` live Yahoo refreshes run
+    so ``make start`` cannot hang for hours after a rate-limit wave.
+    """
     global _THROTTLE_HITS
     _THROTTLE_HITS = 0
     out_dir.mkdir(parents=True, exist_ok=True)
     workers = max(1, min(int(workers), 3))
     done: list[str] = []
     skipped = 0
+    deferred = 0
     failed = 0
-    total = len(symbols)
+
+    # Fast classify — do not block the pool on skip checks mixed with slow fetches.
+    to_fetch: list[str] = []
+    for sym in symbols:
+        path = profile_path(out_dir, sym)
+        existing = None if force else load_profile(out_dir, sym)
+        if not force and profile_is_fresh(existing, path, max_age_hours=max_age_hours):
+            skipped += 1
+            done.append(sym)
+            continue
+        to_fetch.append(sym)
+
+    if fetch_limit > 0 and len(to_fetch) > fetch_limit:
+        deferred = len(to_fetch) - fetch_limit
+        to_fetch = to_fetch[:fetch_limit]
 
     logger.info(
-        "Enrich starting: %d symbols, workers=%d, pace≈%.2fs, skip_fresh≤%.0fh",
-        total,
+        "Enrich: %d total · skip_fresh=%d · fetch_now=%d · defer=%d "
+        "(workers=%d pace≈%.2fs)",
+        len(symbols),
+        skipped,
+        len(to_fetch),
+        deferred,
         workers,
         min_interval,
-        max_age_hours,
     )
+    if not to_fetch:
+        logger.info("Enrich done (nothing to fetch)")
+        return done
+
+    saved = 0
+    t0 = time.monotonic()
+    last_log = t0
 
     def _one(sym: str) -> tuple[str, str]:
-        """Return (symbol, status) where status is saved|skipped|failed."""
         path = profile_path(out_dir, sym)
-        if not force:
-            existing = load_profile(out_dir, sym)
-            if profile_is_fresh(existing, path, max_age_hours=max_age_hours):
-                return sym, "skipped"
         try:
+            logger.info("Enrich fetch %s …", sym)
             profile = fetch_profile(sym, min_interval=min_interval)
-            # Keep prior good fields if this pass was heavily throttled.
-            if profile_needs_refresh(profile) and path.exists():
-                prior = load_profile(out_dir, sym)
-                if prior and not profile_needs_refresh(prior):
-                    for key in ("name", "sector", "industry", "summary", "news", "financials", "calendar"):
-                        if not profile.get(key) and prior.get(key):
-                            profile[key] = prior[key]
-                    if profile.get("last_price") in (None, "", 0) and prior.get("last_price"):
-                        profile["last_price"] = prior["last_price"]
+            prior = load_profile(out_dir, sym) if path.exists() else None
+            if prior:
+                for key in (
+                    "name",
+                    "sector",
+                    "industry",
+                    "summary",
+                    "news",
+                    "financials",
+                    "calendar",
+                    "last_price",
+                    "currency",
+                ):
+                    if not profile.get(key) and prior.get(key):
+                        profile[key] = prior[key]
             save_profile(out_dir, profile)
             return sym, "saved"
         except Exception as exc:  # noqa: BLE001
@@ -520,36 +564,48 @@ def enrich_many(
             return sym, "failed"
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = [pool.submit(_one, s) for s in symbols]
+        futs = [pool.submit(_one, s) for s in to_fetch]
         finished = 0
         for fut in as_completed(futs):
             sym, status = fut.result()
             finished += 1
             if status == "saved":
-                done.append(sym)
-            elif status == "skipped":
-                skipped += 1
+                saved += 1
                 done.append(sym)
             else:
                 failed += 1
-            if finished % 50 == 0 or finished == total:
+            now = time.monotonic()
+            if (
+                finished == len(to_fetch)
+                or finished % 5 == 0
+                or (now - last_log) >= 15.0
+            ):
+                last_log = now
                 logger.info(
-                    "Enrich progress %d/%d  ok=%d skip=%d fail=%d (throttle_hits=%d)",
+                    "Enrich fetch progress %d/%d  saved=%d fail=%d  "
+                    "elapsed=%.0fs throttle_hits=%d",
                     finished,
-                    total,
-                    len(done) - skipped,
-                    skipped,
+                    len(to_fetch),
+                    saved,
                     failed,
+                    now - t0,
                     _THROTTLE_HITS,
                 )
 
     logger.info(
-        "Enrich done ok=%d skipped_fresh=%d failed=%d throttle_hits=%d",
-        len(done) - skipped,
+        "Enrich done saved=%d skipped_fresh=%d deferred=%d failed=%d throttle_hits=%d",
+        saved,
         skipped,
+        deferred,
         failed,
         _THROTTLE_HITS,
     )
+    if deferred:
+        logger.info(
+            "Deferred %d thin profiles (open a ticker to fill on demand, "
+            "or raise enrich_fetch_limit).",
+            deferred,
+        )
     if _THROTTLE_HITS:
         logger.warning(
             "Yahoo rate-limited enrichment %d times — slowed automatically; "
